@@ -96,10 +96,18 @@
   .create input::placeholder { color: var(--muted); opacity: 1; }
   .create input:focus-visible { outline-offset: 0; }
   .loading { color: var(--muted); padding: 18px 16px; }
+  /* Pull to refresh: iOS home-screen apps have no built-in one. */
+  html, body { overscroll-behavior-y: none; }
+  #ptr {
+    position: fixed; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 8px); text-align: center;
+    color: var(--muted); font-size: 14px; opacity: 0; pointer-events: none;
+  }
+  main.settle { transition: transform .2s; }
   @media (prefers-reduced-motion: reduce) { button, a.btn { transition: none; } button:active, a.btn:active { transform: none; } }
 </style>
 </head>
 <body>
+<div id="ptr" aria-hidden="true"></div>
 <main>
   <header><h1>Claude Launcher</h1><span class="fresh" id="fresh"></span></header>
   <div id="status" role="status"></div>
@@ -287,6 +295,38 @@
     catch (e) { setStatus('Stop failed: ' + e.message, true); }
     busy = false; refresh();
   }
+
+  // Pull down from the top and let go past the threshold to reload the page.
+  (() => {
+    const $main = document.querySelector('main');
+    const $ptr = document.getElementById('ptr');
+    const THRESHOLD = 70;
+    let y0 = null, pull = 0;
+    const show = (d) => {
+      $main.style.transform = d ? `translateY(${d}px)` : '';
+      $ptr.style.opacity = Math.min(1, d / THRESHOLD);
+      $ptr.textContent = d >= THRESHOLD ? 'Release to reload' : 'Pull to reload';
+    };
+    addEventListener('touchstart', (e) => {
+      y0 = scrollY <= 0 && e.touches.length === 1 && !e.target.closest('input') ? e.touches[0].clientY : null;
+      pull = 0; $main.classList.remove('settle');
+    }, { passive: true });
+    addEventListener('touchmove', (e) => {
+      if (y0 == null) return;
+      const dy = e.touches[0].clientY - y0;
+      if (dy <= 0 || scrollY > 0) { if (pull) show(pull = 0); return; }
+      e.preventDefault(); // keep the page still while pulling
+      pull = Math.min(110, dy * 0.5);
+      show(pull);
+    }, { passive: false });
+    addEventListener('touchend', () => {
+      if (y0 == null) return;
+      y0 = null;
+      $main.classList.add('settle');
+      if (pull >= THRESHOLD) { $ptr.textContent = 'Reloading…'; location.reload(); return; }
+      show(pull = 0);
+    });
+  })();
 
   refresh();
   setInterval(refresh, 15000);
