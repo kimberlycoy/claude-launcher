@@ -2,6 +2,12 @@
 
 Versions follow semantic versioning (https://semver.org). The current version is in VERSION and shows at the bottom of Settings.
 
+## 1.0.1 - 2026-10-25
+
+- README screenshots for the current layout: a group page and the Activity page, with sample data.
+- `node docs/screenshots.mjs` retakes both screenshots from the real page with sample data.
+- README: the account switch is in Settings.
+
 ## 1.0.0 - 2026-10-25
 
 First release.
