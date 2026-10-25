@@ -2,7 +2,7 @@
 
 A one-page web app for starting and stopping Claude Code Remote Control servers on your Mac from your iPhone, over Tailscale.
 
-The page lists the folders in each project group set in config.local.json (for example ~/dev/personal and ~/dev/work). Start runs `claude remote-control` in that folder inside a detached tmux session, one server per project. New sessions opened for it from the Claude iPhone app (or the Open link) run in that folder and are named after the project. Running projects are listed at the top with how many sessions they have, an Open link and a Stop button.
+The page lists the folders in each project group set in config.local.json (for example ~/dev/personal and ~/dev/work). Start runs `claude remote-control` in that folder inside a detached tmux session, one server per project. New sessions opened for it from the Claude iPhone app (or the Open link) run in that folder and are named after the project. Create, under each group, makes an empty folder with the name you type and starts a server in it. Running projects are listed at the top with how many sessions they have, an Open link and a Stop button.
 
 URL (tailnet only): https://<mac-name>.<tailnet>.ts.net/rc
 
@@ -44,7 +44,8 @@ After code changes: `launchctl kickstart -k gui/$(id -u)/local.claude-launcher`.
 - Servers keep running until stopped from the page, Ctrl-C in the tmux session, or a reboot. Stop sends Ctrl-C so the server can shut down cleanly; it force-kills the tmux session after 5 seconds.
 - Start also opens one session in the project folder, named after the project (`--name`). Sessions aren't archived when the server stops; archive them in the app.
 - New projects show up automatically; the page refreshes every 15 seconds and when it comes back to the foreground.
-- A folder Claude Code hasn't been opened in before may wait on the "trust this folder" prompt. Open it once with `tmux attach` to answer, or run `claude` there once from a terminal.
+- In a folder Claude Code hasn't trusted yet (including every new project), the server waits at the "trust this folder" prompt and the page shows a Trust button. The CLI ignores answers that arrive too quickly, so the launcher never answers it on its own.
+- Project names may use letters, numbers, dot, dash and underscore, and must start with a letter or number.
 
 ## Troubleshooting
 
@@ -53,7 +54,7 @@ After code changes: `launchctl kickstart -k gui/$(id -u)/local.claude-launcher`.
 
 ## Security
 
-The page can start processes on your Mac. It listens only on 127.0.0.1 and is reachable only through `tailscale serve`. Requests from any Tailscale login other than allowedLogin (or the ALLOWED_LOGIN environment variable) are refused; the server won't start without one. POSTs must be JSON, and start only accepts folders from the project list.
+The page can start processes on your Mac. It listens only on 127.0.0.1 and is reachable only through `tailscale serve`. Requests from any Tailscale login other than allowedLogin (or the ALLOWED_LOGIN environment variable) are refused; the server won't start without one. POSTs must be JSON, start only accepts folders from the project list, and create only makes a new folder directly inside a configured group.
 
 ## Files
 

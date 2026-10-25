@@ -8,7 +8,7 @@
 
 import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -104,14 +104,16 @@ async function listServers() {
 async function readPane(id) {
   const info = serverInfo.get(id) || {};
   let sessions = null;
+  let trustPrompt = false;
   try {
     const { stdout } = await tmux('capture-pane', '-p', '-J', '-S', '-200', '-t', id);
     info.url ||= stdout.match(/https:\/\/claude\.ai\/code\?environment=[A-Za-z0-9_]+/)?.[0];
     const counts = [...stdout.matchAll(/Capacity: (\d+)\//g)];
     if (counts.length) sessions = Number(counts.at(-1)[1]);
+    trustPrompt = /Trust .*\? \[y\/N\]\s*$/.test(stdout.trimEnd());
     serverInfo.set(id, info);
   } catch {}
-  return { url: info.url || null, sessions };
+  return { url: info.url || null, sessions, trustPrompt };
 }
 
 async function state() {
@@ -147,11 +149,33 @@ async function start(path) {
 
   // Wait briefly for the server to print its environment link.
   for (let i = 0; i < 20; i++) {
-    const { url } = await readPane(id);
-    if (url) return { id, name: project.name, url };
+    const { url, trustPrompt } = await readPane(id);
+    if (url || trustPrompt) return { id, name: project.name, url, trustPrompt };
     await new Promise((r) => setTimeout(r, 500));
   }
-  return { id, name: project.name, url: null };
+  return { id, name: project.name, url: null, trustPrompt: false };
+}
+
+// The CLI asks whether to trust a folder it hasn't seen and ignores answers that come
+// too fast, so the page shows a Trust button and only a person's tap answers it.
+async function trust(id) {
+  if (!(await listServers()).some((s) => s.id === id && s.trustPrompt))
+    throw httpError(409, 'That server is not asking to trust its folder');
+  await tmux('send-keys', '-t', `=${id}:`, 'y', 'Enter');
+  return { ok: true };
+}
+
+// Makes an empty folder in a project group and starts a server in it.
+async function create(groupTitle, name) {
+  const group = GROUPS.find((g) => g.title === groupTitle);
+  if (!group) throw httpError(400, 'Unknown group');
+  if (typeof name !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(name) || group.skip.includes(name))
+    throw httpError(400, 'Use letters, numbers, dot, dash or underscore, starting with a letter or number');
+  const path = join(group.dir, name);
+  await mkdir(path).catch((e) => {
+    throw e.code === 'EEXIST' ? httpError(409, `${name} already exists`) : e;
+  });
+  return start(path);
 }
 
 async function stop(id) {
@@ -204,6 +228,12 @@ createServer(async (req, res) => {
     if (req.method === 'GET' && pathname === '/api/state') return send(200, await state());
     if (req.method === 'POST' && pathname === '/api/start')
       return send(200, await start((await readJson(req)).path));
+    if (req.method === 'POST' && pathname === '/api/create') {
+      const { group, name } = await readJson(req);
+      return send(200, await create(group, name));
+    }
+    if (req.method === 'POST' && pathname === '/api/trust')
+      return send(200, await trust((await readJson(req)).id));
     if (req.method === 'POST' && pathname === '/api/stop')
       return send(200, await stop((await readJson(req)).id));
     throw httpError(404, 'Not found');

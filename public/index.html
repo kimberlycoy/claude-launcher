@@ -49,6 +49,11 @@
   .running { border-color: var(--ok); }
   a.btn { background: transparent; color: var(--accent); border: 1px solid var(--line); }
   .stop { background: transparent; color: var(--danger); border: 1px solid var(--line); }
+  .create input {
+    flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 6px 10px;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text);
+  }
+  .create button { background: transparent; color: var(--accent); border: 1px solid var(--line); }
   #status { color: var(--muted); font-size: 14px; min-height: 20px; }
   .error { color: var(--danger) !important; }
 </style>
@@ -106,9 +111,9 @@
       el('div', { class: 'card running' }, ...running.map(project))));
     for (const g of groups) {
       const idle = g.projects.filter((p) => !p.server);
-      if (idle.length) sections.push(el('section', {},
+      sections.push(el('section', {},
         el('h2', {}, g.title),
-        el('div', { class: 'card' }, ...idle.map(project))));
+        el('div', { class: 'card' }, ...idle.map(project), createRow(g))));
     }
     $groups.replaceChildren(...sections);
   }
@@ -122,13 +127,47 @@
     const detail = [p.group, 'running ' + age(s.started),
       n == null ? '' : n === 1 ? '1 session' : `${n} sessions`].filter(Boolean).join(' · ');
     return el('div', { class: 'project row' },
-      el('div', { class: 'name' }, el('span', { class: 'dot' }), p.name, el('span', { class: 'age' }, detail)),
+      el('div', { class: 'name' }, el('span', { class: 'dot' }), p.name,
+        el('span', { class: 'age' }, s.trustPrompt ? 'Waiting for you to trust this folder' : detail)),
+      s.trustPrompt ? el('button', { class: 'new', disabled: busy, onclick: () => trust(p) }, 'Trust') : '',
       s.url ? el('a', { class: 'btn', href: s.url, target: '_blank' }, 'Open') : '',
       el('button', { class: 'stop', disabled: busy, onclick: () => stop(p) }, 'Stop'));
   }
 
+  // The 15-second refresh rebuilds the page, so keep typed names across renders.
+  const drafts = {};
+
+  function createRow(g) {
+    const input = el('input', {
+      placeholder: 'New project', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false',
+      enterkeyhint: 'go', disabled: busy, value: drafts[g.title] || null,
+      oninput: (e) => { drafts[g.title] = e.target.value; },
+      onkeydown: (e) => { if (e.key === 'Enter') create(g); },
+    });
+    return el('div', { class: 'project row create' }, input,
+      el('button', { disabled: busy, onclick: () => create(g) }, 'Create'));
+  }
+
+  async function create(g) {
+    const name = (drafts[g.title] || '').trim();
+    if (!name || busy) return;
+    busy = true; setStatus(`Creating ${name} and starting Remote Control...`); refresh();
+    try {
+      const r = await api('create', { group: g.title, name });
+      delete drafts[g.title];
+      setStatus(r.trustPrompt ? `Created ${r.name}. Tap Trust to let Claude work in it.`
+        : `Started ${r.name}. Its session should appear in the Claude app shortly.`);
+    } catch (e) { setStatus('Create failed: ' + e.message, true); }
+    busy = false; refresh();
+  }
+
   async function refresh() {
-    try { render(await api('state')); if (!busy) setStatus(''); }
+    try {
+      const state = await api('state');
+      // Rebuilding the page while typing would close the iPhone keyboard.
+      if (!document.activeElement?.closest('.create')) render(state);
+      if (!busy) setStatus('');
+    }
     catch (e) { setStatus('Could not load: ' + e.message, true); }
   }
 
@@ -136,8 +175,17 @@
     busy = true; setStatus(`Starting Remote Control in ${p.name}...`); refresh();
     try {
       const r = await api('start', { path: p.path });
-      setStatus(`Started ${r.name}. Its session should appear in the Claude app shortly.`);
+      setStatus(r.trustPrompt ? `${r.name} is waiting for you to trust its folder.`
+        : `Started ${r.name}. Its session should appear in the Claude app shortly.`);
     } catch (e) { setStatus('Start failed: ' + e.message, true); }
+    busy = false; refresh();
+  }
+
+  async function trust(p) {
+    if (!confirm(`Trust ${p.path}? Sessions there can read, edit and run files, and the folder's project settings apply to them.`)) return;
+    busy = true; setStatus(`Trusting ${p.name}...`); refresh();
+    try { await api('trust', { id: p.server.id }); setStatus(`Trusted ${p.name}. Its session should appear in the Claude app shortly.`); }
+    catch (e) { setStatus('Trust failed: ' + e.message, true); }
     busy = false; refresh();
   }
 
