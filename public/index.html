@@ -99,6 +99,12 @@
   .create input::placeholder { color: var(--muted); opacity: 1; }
   .create input:focus-visible { outline-offset: 0; }
   .hint { padding: 0 16px 10px; margin: 0; }
+  /* Home's New project: each group's name in small text above its field. */
+  .labelled { position: relative; }
+  .labelled + .labelled::before { content: ''; position: absolute; top: 0; left: 16px; right: 0; border-top: 1px solid var(--line); }
+  .field-label { display: block; padding: 10px 16px 0; color: var(--muted); font-size: 13px; }
+  .labelled .row { min-height: 0; padding-top: 4px; padding-bottom: 10px; }
+  a.plain { color: inherit; text-decoration: none; }
   .loading, .empty { color: var(--muted); padding: 18px 16px; }
   .empty { font-size: 15px; }
 
@@ -171,7 +177,7 @@
   let state = null; // last /api/state, so switching pages renders at once
 
   // Settings live in this browser only.
-  const DEFAULTS = { rows: 3, recentDays: 7, recentCount: 5, theme: 'system' };
+  const DEFAULTS = { rows: 3, recentDays: 7, recentCount: 3, theme: 'system' };
   const settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem('settings') || '{}') };
   function saveSettings() {
     localStorage.setItem('settings', JSON.stringify(settings));
@@ -272,41 +278,23 @@
   // Servers waiting for Trust first, then by name.
   const byTrustThenName = (a, b) => (b.server.trustPrompt - a.server.trustPrompt) || a.name.localeCompare(b.name);
 
+  // Home: New project for each group, then each group's recent projects that aren't running.
   function homePage() {
     const cutoff = Date.now() - settings.recentDays * 864e5;
-    return [...accountSwitch(), ...mine().map((g) => {
-      const running = g.projects.filter((p) => p.server).sort(byTrustThenName);
-      const recent = g.projects.filter((p) => !p.server && p.changed && p.changed >= cutoff)
-        .sort((a, b) => b.changed - a.changed).slice(0, settings.recentCount);
-      const kids = [el('div', { class: 'head' }, el('h2', {}, g.title),
-        el('a', { href: '#/' + slug(g) }, `All ${g.projects.length} ›`))];
-      if (running.length) kids.push(el('h3', {}, 'Running'),
-        el('div', { class: 'card' }, ...fold(g.title + ':running', running.map(project), trustHidden(running))));
-      if (recent.length) kids.push(el('h3', {}, 'Recent'),
-        el('div', { class: 'card' }, ...fold(g.title + ':recent', recent.map(project))));
-      if (!running.length && !recent.length) kids.push(el('div', { class: 'card empty' },
-        `Nothing running or changed in the last ${settings.recentDays === 1 ? 'day' : settings.recentDays + ' days'}.`));
-      return el('section', { class: 'group' }, ...kids);
-    })];
-  }
-
-  // Each tab counts the account's running servers; below is who it's signed in as.
-  function accountSwitch() {
-    if (state.accounts.length < 2) return [];
-    const running = (id) => state.groups.filter((g) => g.account === id)
-      .reduce((n, g) => n + g.projects.filter((p) => p.server).length, 0);
-    const pick = (id) => { account = id; localStorage.setItem('account', id); setStatus(''); render(); };
-    const a = state.accounts.find((x) => x.id === account);
-    return [el('div', { class: 'account' },
-      el('div', { class: 'segments', role: 'group', 'aria-label': 'Account' }, ...state.accounts.map((x) => {
-        const n = running(x.id);
-        return el('button', { 'aria-pressed': String(x.id === account), onclick: () => pick(x.id) },
-          x.title, n ? el('span', { class: 'count', 'aria-label': `, ${n} running` }, String(n)) : '');
-      })),
-      a.loggedIn
-        ? el('div', { class: 'who' }, [a.email, a.org].filter(Boolean).join(' · '))
-        : el('div', { class: 'who out' }, 'Not signed in. On the Mac, run ',
-          el('code', {}, `${a.configDir ? `CLAUDE_CONFIG_DIR=${a.configDir} ` : ''}claude auth login`)))];
+    const days = settings.recentDays === 1 ? 'day' : settings.recentDays + ' days';
+    return [
+      section(head('New project'), el('div', { class: 'card' }, ...state.groups.map((g) => createRow(g, g.short)))),
+      ...state.groups.map((g) => {
+        const recent = g.projects.filter((p) => !p.server && p.changed && p.changed >= cutoff)
+          .sort((a, b) => b.changed - a.changed).slice(0, settings.recentCount);
+        return el('section', { class: 'group' },
+          el('div', { class: 'head' }, el('h2', {}, el('a', { href: '#/' + slug(g), class: 'plain' }, g.title)),
+            el('a', { href: '#/' + slug(g) }, `All ${g.projects.length} \u203A`)),
+          el('h3', {}, 'Recent'),
+          recent.length ? el('div', { class: 'card' }, ...recent.map(project))
+            : el('div', { class: 'card empty' }, `Nothing changed in the last ${days}.`));
+      }),
+    ];
   }
 
   function groupPage(g) {
@@ -337,7 +325,7 @@
         row('Rows before the arrow', 'Longer lists fold after this many', stepper('rows', 1, 20)))),
       section(head('Recent'), el('div', { class: 'card' },
         row('Days to look back', 'A project is recent if a file changed in this time', stepper('recentDays', 1, 60)),
-        row('Projects per group', 'On Home, under each group', stepper('recentCount', 1, 20)))),
+        row('Projects per group', 'In Recent on Home and on group pages', stepper('recentCount', 1, 20)))),
       section(head('Appearance'), el('div', { class: 'card' },
         row('Theme', 'System follows your iPhone', el('div', { class: 'segments' },
           ...['system', 'light', 'dark'].map((t) => el('button', { 'aria-pressed': String(settings.theme === t), onclick: () => set('theme', t) },
@@ -396,7 +384,7 @@
     .replace(/[^a-z0-9._-]+/g, '-').replace(/-{2,}/g, '-')
     .replace(/^[^a-z0-9]+|[-.]+$/g, '').slice(0, 64);
 
-  function createRow(g) {
+  function createRow(g, label) {
     const name = drafts[g.title] || '';
     const fixed = folderName(name);
     const hint = name.trim() && fixed !== name.trim() ? el('span', { class: 'meta hint' }, fixed ? `Will be ${fixed}` : 'Use some letters or numbers') : '';
@@ -409,15 +397,17 @@
         onkeydown: (e) => { if (e.key === 'Enter') create(g); },
       }),
       el('button', { class: 'start', disabled: busy, onclick: () => create(g) }, 'Create'));
-    return hint ? el('div', {}, row, hint) : row;
+    const out = label ? el('div', { class: 'labelled' }, el('span', { class: 'field-label' }, label), row) : row;
+    if (hint) out.append(hint);
+    return out;
   }
 
   // Update just the hint while typing, so the input keeps focus.
   function showHint(input, g) {
     const name = input.value.trim(), fixed = folderName(name);
-    const card = input.closest('.card');
-    card.querySelector('.hint')?.remove();
-    if (name && fixed !== name) card.append(el('span', { class: 'meta hint' }, fixed ? `Will be ${fixed}` : 'Use some letters or numbers'));
+    const box = input.closest('.labelled') || input.closest('.card');
+    box.querySelector('.hint')?.remove();
+    if (name && fixed !== name) box.append(el('span', { class: 'meta hint' }, fixed ? `Will be ${fixed}` : 'Use some letters or numbers'));
   }
 
   async function create(g) {
