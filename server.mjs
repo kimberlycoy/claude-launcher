@@ -4,6 +4,9 @@
 // tmux session, so new sessions can be opened in that folder from the Claude iPhone app.
 // One server per project. Node standard library only.
 //
+// Optional "accounts" in the config give each project group its own Claude login: servers
+// for a group run with that account's CLAUDE_CONFIG_DIR, and the page shows one account at a time.
+//
 // Serves 127.0.0.1:8766. `tailscale serve --set-path /rc` exposes it to the tailnet.
 
 import { execFile } from 'node:child_process';
@@ -19,11 +22,21 @@ const run = promisify(execFile);
 const PORT = Number(process.env.PORT || 8766);
 const HOME = homedir();
 const CONFIG = loadConfig(join(import.meta.dirname, 'config.local.json'));
+const expand = (p) => p.replace(/^~(?=\/|$)/, HOME);
+// Without "accounts", everything runs as the CLI's default login.
+const ACCOUNTS = (CONFIG.accounts || [{ id: 'default', title: 'Claude' }]).map((a) => ({
+  id: a.id,
+  title: a.title,
+  // ~/.claude is the CLI's default; leave CLAUDE_CONFIG_DIR unset for it so it keeps
+  // using the existing login.
+  configDir: a.configDir && expand(a.configDir) !== join(HOME, '.claude') ? expand(a.configDir) : null,
+}));
 const GROUPS = CONFIG.groups.map((g) => ({
   title: g.title,
   short: g.short || g.title.replace(/\s+projects$/i, ''),
-  dir: g.dir.replace(/^~(?=\/|$)/, HOME),
+  dir: expand(g.dir),
   skip: g.skip || [],
+  account: g.account || ACCOUNTS[0].id,
 }));
 // Only this Tailscale login may use the page. Requests without the header come from
 // this Mac itself (tailscale serve always sets it for tailnet traffic).
@@ -59,10 +72,48 @@ function loadConfig(file) {
     console.error(`${file}: groups must be a list of { "title", "dir" }.`);
     process.exit(1);
   }
+  if (config.accounts) {
+    const ids = config.accounts.map((a) => a.id);
+    if (!config.accounts.every((a) => a.id && a.title) || new Set(ids).size !== ids.length) {
+      console.error(`${file}: accounts must be a list of { "id", "title", "configDir" } with unique ids.`);
+      process.exit(1);
+    }
+    const bad = config.groups.find((g) => !ids.includes(g.account));
+    if (bad) {
+      console.error(`${file}: group "${bad.title}" needs an "account" from: ${ids.join(', ')}.`);
+      process.exit(1);
+    }
+  }
   return config;
 }
 
 const tmux = (...args) => run(TMUX, args, { env: ENV });
+
+const accountEnv = (account) => {
+  const { configDir } = ACCOUNTS.find((a) => a.id === account);
+  return configDir ? { ...ENV, CLAUDE_CONFIG_DIR: configDir } : ENV;
+};
+
+// Who each account is signed in as, so the page can show it. `claude auth status` is a
+// process spawn, so keep a signed-in answer for a minute; check a signed-out one each time.
+const authCache = new Map(); // account id -> { at, info }
+async function accountInfo(a) {
+  const hit = authCache.get(a.id);
+  if (hit?.info.loggedIn && Date.now() - hit.at < 60000) return hit.info;
+  let info = { loggedIn: false };
+  try {
+    const { stdout } = await run(CLAUDE, ['auth', 'status'], { env: accountEnv(a.id), cwd: HOME, timeout: 15000 });
+    const s = JSON.parse(stdout);
+    info = { loggedIn: !!s.loggedIn, email: s.email || null, org: s.orgName || null };
+  } catch (e) {
+    // auth status exits non-zero when logged out but still prints its JSON.
+    try {
+      info.loggedIn = !!JSON.parse(e.stdout).loggedIn;
+    } catch {}
+  }
+  authCache.set(a.id, { at: Date.now(), info });
+  return info;
+}
 
 async function listProjects() {
   const groups = [];
@@ -75,7 +126,7 @@ async function listProjects() {
       const s = await stat(path).catch(() => null); // follows symlinks
       if (s?.isDirectory()) projects.push({ name, path });
     }
-    groups.push({ title: g.title, short: g.short, dir: g.dir, projects });
+    groups.push({ title: g.title, short: g.short, dir: g.dir, account: g.account, projects });
   }
   return groups;
 }
@@ -155,7 +206,8 @@ function scanChanged(paths) {
 }
 
 async function state() {
-  const [groups, servers] = await Promise.all([listProjects(), listServers()]);
+  const [groups, servers, infos] = await Promise.all([
+    listProjects(), listServers(), Promise.all(ACCOUNTS.map(accountInfo))]);
   const paths = groups.flatMap((g) => g.projects.map((p) => p.path));
   // Wait briefly for a scan so the first load usually has recents; later loads use the cache.
   const scan = scanChanged(paths);
@@ -165,7 +217,8 @@ async function state() {
       p.server = servers.find((s) => s.path === p.path) || null;
       p.changed = changed.get(p.path)?.ms ?? null;
     }
-  return { groups };
+  const accounts = ACCOUNTS.map((a, i) => ({ id: a.id, title: a.title, configDir: a.configDir, ...infos[i] }));
+  return { accounts, groups };
 }
 
 async function start(path) {
@@ -175,6 +228,9 @@ async function start(path) {
   const project = group.projects.find((p) => p.path === path);
   if ((await listServers()).some((s) => s.path === path))
     throw httpError(409, `${project.name} is already running`);
+  const account = ACCOUNTS.find((a) => a.id === group.account);
+  if (!(await accountInfo(account)).loggedIn)
+    throw httpError(409, `The ${account.title} account isn't signed in on the Mac`);
 
   const id = `${PREFIX}${basename(group.dir)}-${project.name}`.replace(/[^A-Za-z0-9_-]/g, '_');
   // A tmux session left over from a server that exited has no live claude; clear it.
@@ -185,12 +241,13 @@ async function start(path) {
   // The server opens one session in this folder named after the project, so it shows
   // up in the app right away; more sessions opened from the phone also run here.
   await tmux('new-session', '-d', '-s', id, '-x', '200', '-y', '50', '-c', path,
-    '/usr/bin/env', '-i', ...Object.entries(ENV).map(([k, v]) => `${k}=${v}`),
+    '/usr/bin/env', '-i', ...Object.entries(accountEnv(group.account)).map(([k, v]) => `${k}=${v}`),
     CLAUDE, 'remote-control', '--spawn', 'same-dir', '--name', project.name,
     '--remote-control-session-name-prefix', project.name);
   await tmux('set-option', '-t', id, '@rc_path', path);
   await tmux('set-option', '-t', id, '@rc_name', project.name);
   await tmux('set-option', '-t', id, '@rc_mode', 'server');
+  await tmux('set-option', '-t', id, '@rc_account', group.account);
 
   // Wait briefly for the server to print its environment link.
   for (let i = 0; i < 20; i++) {

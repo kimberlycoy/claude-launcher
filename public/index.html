@@ -118,6 +118,14 @@
   .segments button { border: 0; border-radius: 0; min-height: 36px; padding: 0 12px; font-size: 14px; }
   .segments button + button { border-left: 1px solid var(--control); }
   .segments [aria-pressed="true"] { background: var(--press); font-weight: 600; }
+  /* Account switch on Home, shown only with more than one account. */
+  .account { margin: 12px 0 28px; }
+  .account .segments { display: flex; }
+  .account .segments button { flex: 1; min-height: 40px; font-size: 15px; }
+  .account .count { margin-left: 6px; font-weight: 400; color: var(--accent-ink); font-variant-numeric: tabular-nums; }
+  .who { color: var(--muted); font-size: 13px; margin: 6px 2px 0; overflow-wrap: anywhere; }
+  .who.out { color: var(--danger); }
+  .who code { font-size: 12px; }
 
   /* Bottom toolbar: Home, one tab per group, Settings. */
   nav {
@@ -172,6 +180,11 @@
   }
   applyTheme();
 
+  // With more than one Claude account, the page shows one at a time: its groups in the
+  // toolbar and on Home. The choice is kept apart from settings so Reset doesn't switch it.
+  let account = localStorage.getItem('account');
+  const mine = () => state.groups.filter((g) => g.account === account);
+
   function setStatus(text, isError) {
     $status.textContent = text || '';
     $status.className = isError ? 'error' : '';
@@ -220,12 +233,13 @@
 
   function render() {
     if (!state) return;
+    if (!state.accounts.some((a) => a.id === account)) account = state.accounts[0].id;
     const r = route();
-    const group = state.groups.find((g) => slug(g) === r);
+    const group = mine().find((g) => slug(g) === r);
     const page = r === 'settings' ? 'settings' : group ? 'group' : 'home';
     $tabs.replaceChildren(
       tab('#/', 'Home', page === 'home'),
-      ...state.groups.map((g) => tab('#/' + slug(g), g.short, group === g)),
+      ...mine().map((g) => tab('#/' + slug(g), g.short, group === g)),
       tab('#/settings', 'Settings', page === 'settings'));
     if (page === 'settings') { $title.textContent = 'Settings'; $view.replaceChildren(...settingsPage()); }
     else if (group) { $title.textContent = group.title; $view.replaceChildren(...groupPage(group)); }
@@ -239,7 +253,7 @@
 
   function homePage() {
     const cutoff = Date.now() - settings.recentDays * 864e5;
-    return state.groups.map((g) => {
+    return [...accountSwitch(), ...mine().map((g) => {
       const running = g.projects.filter((p) => p.server).sort(byTrustThenName);
       const recent = g.projects.filter((p) => !p.server && p.changed && p.changed >= cutoff)
         .sort((a, b) => b.changed - a.changed).slice(0, settings.recentCount);
@@ -252,7 +266,26 @@
       if (!running.length && !recent.length) kids.push(el('div', { class: 'card empty' },
         `Nothing running or changed in the last ${settings.recentDays === 1 ? 'day' : settings.recentDays + ' days'}.`));
       return el('section', { class: 'group' }, ...kids);
-    });
+    })];
+  }
+
+  // Each tab counts the account's running servers; below is who it's signed in as.
+  function accountSwitch() {
+    if (state.accounts.length < 2) return [];
+    const running = (id) => state.groups.filter((g) => g.account === id)
+      .reduce((n, g) => n + g.projects.filter((p) => p.server).length, 0);
+    const pick = (id) => { account = id; localStorage.setItem('account', id); setStatus(''); render(); };
+    const a = state.accounts.find((x) => x.id === account);
+    return [el('div', { class: 'account' },
+      el('div', { class: 'segments', role: 'group', 'aria-label': 'Account' }, ...state.accounts.map((x) => {
+        const n = running(x.id);
+        return el('button', { 'aria-pressed': String(x.id === account), onclick: () => pick(x.id) },
+          x.title, n ? el('span', { class: 'count', 'aria-label': `, ${n} running` }, String(n)) : '');
+      })),
+      a.loggedIn
+        ? el('div', { class: 'who' }, [a.email, a.org].filter(Boolean).join(' · '))
+        : el('div', { class: 'who out' }, 'Not signed in. On the Mac, run ',
+          el('code', {}, `${a.configDir ? `CLAUDE_CONFIG_DIR=${a.configDir} ` : ''}claude auth login`)))];
   }
 
   function groupPage(g) {

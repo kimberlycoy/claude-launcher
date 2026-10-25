@@ -10,6 +10,8 @@ The page has a toolbar at the bottom with Home, a page for each project group se
 - Pull down from the top of a page to reload it. Home also refreshes every 15 seconds.
 - A group's tab uses its "short" name from config.local.json, or the title without "projects".
 
+With more than one Claude account (for example personal and work), each project group belongs to one account, and a switch at the top of Home shows one account at a time: the toolbar and Home show only that account's groups, and Home shows who it's signed in as. Servers for both accounts can run at once; the switch only changes what the page shows, and its tabs count each account's running servers. The Claude iPhone app only lists Remote Control servers for the account it's signed in to, so switch accounts there too.
+
 <img src="docs/screenshot.png" alt="Claude Launcher on an iPhone" width="320">
 
 URL (tailnet only): https://<mac-name>.<tailnet>.ts.net/rc
@@ -27,6 +29,14 @@ URL (tailnet only): https://<mac-name>.<tailnet>.ts.net/rc
 1. Create the config, then set allowedLogin to your Tailscale login and list your project folders:
 
         cp config.example.json config.local.json
+
+   For more than one account, add "accounts" (each with an id, title and configDir) and give each group an "account"; see config.example.json. ~/.claude is the CLI's default folder. Sign in to each other account once on the Mac, for example:
+
+        CLAUDE_CONFIG_DIR=~/.claude-personal claude auth login
+
+   Each config folder has its own settings, skills, CLAUDE.md, memory and session history. To share the global ones, symlink them from ~/.claude:
+
+        cd ~/.claude-personal && ln -s ../.claude/CLAUDE.md ../.claude/settings.json ../.claude/skills .
 
 2. Install the launchd agent (run from this folder):
 
@@ -58,6 +68,7 @@ After code changes: `launchctl kickstart -k gui/$(id -u)/local.claude-launcher`.
 ## Troubleshooting
 
 - Page doesn't load: `launchctl list | grep claude-launcher`, then check server.log. Check `tailscale serve status` shows /rc.
+- Start says an account isn't signed in: run the `claude auth login` command the page shows, on the Mac.
 - Server never shows an Open link or never appears in the app: `tmux attach -t <name>` to see what it's waiting on. Common causes are a logged-out CLI (`claude auth status`) or a macOS file-access prompt for a protected folder.
 
 ## Security
