@@ -50,7 +50,7 @@
 
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
   .row { display: flex; align-items: center; gap: 10px; min-height: 60px; padding: 10px 12px 10px 16px; }
-  .row + .row, .row + .more { border-top: 1px solid var(--line); }
+  .row + .row { border-top: 1px solid var(--line); }
   .name { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: break-word; }
   .meta { display: block; color: var(--muted); font-size: 13px; font-weight: 400; margin-top: 2px; font-variant-numeric: tabular-nums; }
   .server .line { display: flex; align-items: center; min-width: 0; }
@@ -83,16 +83,10 @@
   .stop { color: var(--danger); }
   .link { border: 0; min-height: 32px; padding: 0 4px; color: var(--accent-ink); font-size: 15px; }
 
-  /* Collapsed sections: a tappable card that says what's inside. */
-  .peek { width: 100%; border: 0; border-radius: 0; min-height: 64px; padding: 12px 16px; justify-content: flex-start; gap: 12px; text-align: left; font-weight: 400; }
-  .peek .name { white-space: normal; }
-  .chev { color: var(--accent-ink); font-size: 22px; line-height: 1; }
-  /* Closed New project: the top of its rows shows, cut off, above a down arrow. */
-  .clip { max-height: 34px; overflow: hidden; cursor: pointer; }
+  /* Folded lists: the top of the third row shows, cut off, above a down arrow. */
+  .clip { max-height: 30px; overflow: hidden; cursor: pointer; border-top: 1px solid var(--line); }
   .clip .row { pointer-events: none; }
   .down { width: 100%; border: 0; border-top: 1px solid var(--line); border-radius: 0; min-height: 36px; color: var(--accent-ink); font-size: 18px; }
-  .more { width: 100%; border: 0; border-radius: 0; min-height: 48px; padding: 0 16px; justify-content: flex-start; color: var(--accent-ink); }
-
   .create input {
     flex: 1; min-width: 0; height: 40px; font: inherit; font-size: 16px; padding: 0 14px;
     border: 1px solid var(--control); border-radius: 8px; background: var(--bg); color: var(--text);
@@ -159,43 +153,41 @@
   function render({ groups }) {
     const running = groups.flatMap((g) => g.projects.filter((p) => p.server))
       .sort((a, b) => a.name.localeCompare(b.name));
-    const sections = [section(
-      head('New project', null, createOpen ? ['Done', () => { createOpen = false; }] : null),
-      el('div', { class: 'card' }, ...(createOpen ? groups.map(createRow) : createPeek(groups))))];
+    const sections = [section(head('New project'),
+      el('div', { class: 'card' }, ...fold('create', groups.map(createRow))))];
 
-    if (running.length) {
-      // More than three running servers collapse, unless one is waiting for Trust.
-      const collapsible = running.length > 3 && !running.some((p) => p.server.trustPrompt);
-      const open = !collapsible || runningOpen;
-      const names = running.slice(0, 3).map((p) => p.name).join(', ') + ` and ${running.length - 3} more`;
-      sections.push(section(
-        head('Running', running.length, collapsible && open ? ['Hide', () => { runningOpen = false; }] : null),
-        el('div', { class: 'card' }, ...(open ? running.map(project)
-          : [peek(`${running.length} servers running`, names, () => { runningOpen = true; })]))));
-    }
+    // A server waiting for Trust past the second row keeps Running open, so its button shows.
+    if (running.length) sections.push(section(head('Running', running.length),
+      el('div', { class: 'card' }, ...fold('running', running.map(project),
+        running.slice(2).some((p) => p.server.trustPrompt)))));
 
     for (const g of groups) {
       const idle = g.projects.filter((p) => !p.server);
-      if (idle.length) sections.push(section(
-        head(g.title, idle.length),
-        el('div', { class: 'card' }, ...firstRows(g.title, idle.map(project)))));
+      if (idle.length) sections.push(section(head(g.title, idle.length),
+        el('div', { class: 'card' }, ...fold(g.title, idle.map(project)))));
     }
     $groups.replaceChildren(...sections);
   }
 
   const section = (...kids) => el('section', {}, ...kids);
 
-  // A section heading with an optional count and one text action on the right.
-  function head(title, count, action) {
+  function head(title, count) {
     return el('div', { class: 'head' },
-      el('h2', {}, title, count == null ? '' : el('span', { class: 'count' }, String(count))),
-      action ? el('button', { class: 'link', onclick: () => { action[1](); refresh(); } }, action[0]) : '');
+      el('h2', {}, title, count == null ? '' : el('span', { class: 'count' }, String(count))));
   }
 
-  function peek(title, detail, open) {
-    return el('button', { class: 'peek', 'aria-expanded': 'false', onclick: () => { open(); refresh(); } },
-      el('span', { class: 'name' }, title, el('span', { class: 'meta' }, detail)),
-      el('span', { class: 'chev', 'aria-hidden': 'true' }, '›'));
+  // Lists show two rows, then the top of the third, cut off, above a down arrow.
+  // The 15-second refresh rebuilds the page, so open lists are remembered by key.
+  const unfolded = {};
+  function fold(key, rows, forceOpen = false) {
+    if (rows.length <= 2) return rows;
+    const toggle = () => { unfolded[key] = !unfolded[key]; refresh(); };
+    if (unfolded[key] || forceOpen) return [...rows,
+      forceOpen ? '' : el('button', { class: 'down', 'aria-label': 'Show fewer', 'aria-expanded': 'true', onclick: toggle }, '⌃')];
+    for (const c of rows[2].querySelectorAll('input, button, a')) c.tabIndex = -1;
+    return [...rows.slice(0, 2),
+      el('div', { class: 'clip', 'aria-hidden': 'true', onclick: toggle }, rows[2]),
+      el('button', { class: 'down', 'aria-label': `Show all ${rows.length}`, 'aria-expanded': 'false', onclick: toggle }, '⌄')];
   }
 
   function project(p) {
@@ -216,30 +208,8 @@
       el('button', { class: 'stop', disabled: busy, onclick: () => stop(p) }, 'Stop'));
   }
 
-  // The 15-second refresh rebuilds the page, so keep typed names and open sections across renders.
+  // The 15-second refresh rebuilds the page, so keep typed names across renders.
   const drafts = {};
-  let createOpen = false; // New project starts closed on every load
-  let runningOpen = false;
-
-  // Group lists show three projects until opened.
-  const groupOpen = {};
-  function firstRows(key, rows) {
-    if (rows.length <= 3) return rows;
-    const open = groupOpen[key];
-    return [...(open ? rows : rows.slice(0, 3)),
-      el('button', { class: 'more', 'aria-expanded': String(!!open), onclick: () => { groupOpen[key] = !open; refresh(); } },
-        open ? 'Show fewer' : `Show ${rows.length - 3} more`)];
-  }
-
-  function createPeek(groups) {
-    const open = () => { createOpen = true; refresh(); };
-    const rows = groups.map(createRow);
-    for (const c of rows.flatMap((row) => [...row.querySelectorAll('input, button')])) c.tabIndex = -1;
-    return [
-      el('div', { class: 'clip', 'aria-hidden': 'true', onclick: open }, ...rows),
-      el('button', { class: 'down', 'aria-label': 'Show New project', 'aria-expanded': 'false', onclick: open }, '\u2304'),
-    ];
-  }
 
   function createRow(g) {
     return el('div', { class: 'row create' },
