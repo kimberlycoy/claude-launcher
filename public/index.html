@@ -53,6 +53,11 @@
     flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 6px 10px;
     border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text);
   }
+  .peek {
+    width: 100%; text-align: left; background: transparent; color: var(--text);
+    border-radius: 0; padding: 12px 14px; font-size: 16px;
+  }
+  .peek .chev { color: var(--accent); font-size: 20px; line-height: 1; }
   h2 button {
     font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit;
     background: none; border: 0; padding: 0; border-radius: 0;
@@ -113,7 +118,7 @@
       .sort((a, b) => a.name.localeCompare(b.name));
     const sections = [el('section', {},
       toggle('New project', createOpen, () => { createOpen = !createOpen; }),
-      createOpen ? el('div', { class: 'card' }, ...groups.map(createRow)) : '')];
+      el('div', { class: 'card' }, ...(createOpen ? groups.map(createRow) : [createPeek(groups)])))];
     // More than three running servers collapse, unless one is waiting for Trust.
     const collapsible = running.length > 3 && !running.some((p) => p.server.trustPrompt);
     const showRunning = !collapsible || runningOpen;
@@ -153,6 +158,14 @@
 
   function toggle(label, open, flip) {
     return el('h2', {}, el('button', { 'aria-expanded': String(open), onclick: () => { flip(); refresh(); } }, label));
+  }
+
+  // Closed state: a tappable card that says what's inside.
+  function createPeek(groups) {
+    return el('button', { class: 'peek row', onclick: () => { createOpen = true; refresh(); } },
+      el('div', { class: 'name' }, 'Make a folder and start Claude in it',
+        el('span', { class: 'age' }, groups.map((g) => g.title).join(' · '))),
+      el('span', { class: 'chev', 'aria-hidden': 'true' }, '\u203A'));
   }
 
   function createRow(g) {
