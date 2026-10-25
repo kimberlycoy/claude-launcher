@@ -2,7 +2,7 @@
 
 A one-page web app for starting and stopping Claude Code Remote Control servers on your Mac from your iPhone, over Tailscale.
 
-The page lists the folders in each project group set in config.local.json (for example ~/dev/personal and ~/dev/work). Start runs `claude remote-control` in that folder inside a detached tmux session, one server per project. New sessions opened for it from the Claude iPhone app (or the Open link) run in that folder and are named after the project. New project, at the top, makes an empty folder with the name you type in the group you pick and starts a server in it. Running projects are listed at the top with how many sessions they have, an Open link and a Stop button.
+The page lists the folders in each project group set in config.local.json (for example ~/dev/personal and ~/dev/work). Start runs `claude remote-control` in that folder inside a detached tmux session, one server per project. New sessions opened for it from the Claude iPhone app (or the Open link) run in that folder and are named after the project. New project, at the top, starts closed; tap it to show a row per group. Each row makes an empty folder with the name you type and starts a server in it. Running projects are listed at the top with how many sessions they have, an Open link and a Stop button.
 
 <img src="docs/screenshot.png" alt="Claude Launcher on an iPhone" width="320">
 
