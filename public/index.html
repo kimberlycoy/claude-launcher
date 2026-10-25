@@ -53,6 +53,10 @@
     flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 6px 10px;
     border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text);
   }
+  .create select {
+    font: inherit; font-size: 16px; padding: 6px 8px; max-width: 40%;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text);
+  }
   .create button { background: transparent; color: var(--accent); border: 1px solid var(--line); }
   #status { color: var(--muted); font-size: 14px; min-height: 20px; }
   .error { color: var(--danger) !important; }
@@ -105,15 +109,15 @@
   function render({ groups }) {
     const running = groups.flatMap((g) => g.projects.filter((p) => p.server).map((p) => ({ ...p, group: g.title })))
       .sort((a, b) => a.server.started - b.server.started);
-    const sections = [];
+    const sections = [el('section', {}, el('h2', {}, 'New project'), el('div', { class: 'card' }, createRow(groups)))];
     if (running.length) sections.push(el('section', {},
       el('h2', {}, `Running · ${running.length}`),
       el('div', { class: 'card running' }, ...running.map(project))));
     for (const g of groups) {
       const idle = g.projects.filter((p) => !p.server);
-      sections.push(el('section', {},
+      if (idle.length) sections.push(el('section', {},
         el('h2', {}, g.title),
-        el('div', { class: 'card' }, ...idle.map(project), createRow(g))));
+        el('div', { class: 'card' }, ...idle.map(project))));
     }
     $groups.replaceChildren(...sections);
   }
@@ -134,27 +138,32 @@
       el('button', { class: 'stop', disabled: busy, onclick: () => stop(p) }, 'Stop'));
   }
 
-  // The 15-second refresh rebuilds the page, so keep typed names across renders.
-  const drafts = {};
+  // The 15-second refresh rebuilds the page, so keep the typed name and group across renders.
+  const draft = { name: '', group: localStorage.getItem('createGroup') };
 
-  function createRow(g) {
+  function createRow(groups) {
+    if (!groups.some((g) => g.title === draft.group)) draft.group = groups[0]?.title;
     const input = el('input', {
-      placeholder: 'New project', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false',
-      enterkeyhint: 'go', disabled: busy, value: drafts[g.title] || null,
-      oninput: (e) => { drafts[g.title] = e.target.value; },
-      onkeydown: (e) => { if (e.key === 'Enter') create(g); },
+      placeholder: 'Name', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false',
+      enterkeyhint: 'go', disabled: busy, value: draft.name || null,
+      oninput: (e) => { draft.name = e.target.value; },
+      onkeydown: (e) => { if (e.key === 'Enter') create(); },
     });
-    return el('div', { class: 'project row create' }, input,
-      el('button', { disabled: busy, onclick: () => create(g) }, 'Create'));
+    const select = el('select', {
+      disabled: busy, 'aria-label': 'Group',
+      onchange: (e) => { draft.group = e.target.value; localStorage.setItem('createGroup', draft.group); },
+    }, ...groups.map((g) => el('option', { value: g.title, selected: g.title === draft.group }, g.title)));
+    return el('div', { class: 'row create' }, input, select,
+      el('button', { disabled: busy, onclick: create }, 'Create'));
   }
 
-  async function create(g) {
-    const name = (drafts[g.title] || '').trim();
+  async function create() {
+    const name = draft.name.trim();
     if (!name || busy) return;
     busy = true; setStatus(`Creating ${name} and starting Remote Control...`); refresh();
     try {
-      const r = await api('create', { group: g.title, name });
-      delete drafts[g.title];
+      const r = await api('create', { group: draft.group, name });
+      draft.name = '';
       setStatus(r.trustPrompt ? `Created ${r.name}. Tap Trust to let Claude work in it.`
         : `Started ${r.name}. Its session should appear in the Claude app shortly.`);
     } catch (e) { setStatus('Create failed: ' + e.message, true); }
