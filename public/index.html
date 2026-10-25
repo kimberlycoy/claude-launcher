@@ -38,7 +38,6 @@
   main { max-width: 640px; margin: 0 auto; }
   header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 24px 0 4px; }
   h1 { font-size: 24px; line-height: 1.2; letter-spacing: -0.01em; margin: 0; }
-  .fresh { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
   #status { color: var(--muted); font-size: 14px; min-height: 20px; margin-bottom: 4px; }
   #status.error { color: var(--danger); }
   #status button { margin-left: 8px; }
@@ -107,7 +106,7 @@
 <body>
 <div id="ptr" aria-hidden="true"></div>
 <main>
-  <header><h1>Claude Launcher</h1><span class="fresh" id="fresh"></span></header>
+  <header><h1>Claude Launcher</h1></header>
   <div id="status" role="status"></div>
   <div id="groups"><div class="card loading">Loading projects…</div></div>
 </main>
@@ -236,18 +235,15 @@
     busy = false; refresh();
   }
 
-  const $fresh = document.getElementById('fresh');
-  const clock = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
   async function refresh() {
     try {
       const state = await api('state');
-      $fresh.textContent = 'Updated ' + clock(new Date());
       // Rebuilding the page while typing would close the iPhone keyboard.
       if (!document.activeElement?.closest('.create')) render(state);
       if (!busy) setStatus('');
     } catch (e) {
-      setStatus(`Couldn't load projects (${e.message}).`, true); // the header keeps the last good time
+      setStatus(`Couldn't load projects (${e.message}).`, true); 
       $status.append(el('button', { class: 'link', onclick: refresh }, 'Retry'));
     }
   }
