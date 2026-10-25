@@ -19,13 +19,13 @@
   :root {
     --bg: #f7f5f2; --card: #fff; --text: #1f1d1a; --muted: #6b655e; --line: #ebe6df; --control: #ddd6cd;
     --accent: #c96442; --accent-ink: #ad4e2d; --accent-fill: #b4532f; --accent-on: #fff;
-    --danger: #a8231b; --press: #f1ede8; --wait: #fbefe9;
+    --danger: #a8231b; --press: #f1ede8; --pill-bg: #fbe9e1; --pill-ink: #8a3a1f;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #1b1a18; --card: #262422; --text: #eeeae4; --muted: #ada79f; --line: #34312c; --control: #4a463f;
       --accent: #d97757; --accent-ink: #e58a6b; --accent-fill: #d97757; --accent-on: #1b1a18;
-      --danger: #f2827a; --press: #2f2c29; --wait: #3a2b24;
+      --danger: #f2827a; --press: #2f2c29; --pill-bg: #4a2f24; --pill-ink: #f3b49c;
     }
   }
   * { box-sizing: border-box; }
@@ -53,12 +53,16 @@
   .row + .row, .row + .more { border-top: 1px solid var(--line); }
   .name { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: break-word; }
   .meta { display: block; color: var(--muted); font-size: 13px; font-weight: 400; margin-top: 2px; font-variant-numeric: tabular-nums; }
-  .server .label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .server .line { display: flex; align-items: center; min-width: 0; }
+  .server .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .server { gap: 8px; }
   .server button, .server a.btn { padding: 0 14px; }
-  /* A server waiting for Trust is the one row that needs you: tinted, with the reason in words. */
-  .wait { background: var(--wait); }
-  .wait .meta { color: var(--accent-ink); font-weight: 600; }
+  /* A server waiting for Trust is the one row that needs you: a pale pill beside its name. */
+  .pill {
+    flex: none; white-space: nowrap; margin-left: 8px;
+    padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; line-height: 16px;
+    background: var(--pill-bg); color: var(--pill-ink);
+  }
 
   /* One control shape: a 40px rounded rectangle. Start, Create and Trust are filled; Open and Stop are outlined. */
   button, a.btn {
@@ -189,10 +193,13 @@
       el('div', { class: 'name' }, p.name),
       el('button', { class: 'start', disabled: busy, onclick: () => start(p) }, 'Start'));
     const n = s.sessions;
-    const detail = s.trustPrompt ? 'Needs you: tap Trust'
+    const detail = s.trustPrompt ? 'Waiting to trust this folder'
       : [n == null ? '' : n === 1 ? '1 session' : `${n} sessions`, age(s.started)].filter(Boolean).join(' · ');
-    return el('div', { class: 'row server' + (s.trustPrompt ? ' wait' : '') },
-      el('div', { class: 'name' }, el('span', { class: 'label' }, p.name), el('span', { class: 'meta' }, detail)),
+    return el('div', { class: 'row server' },
+      el('div', { class: 'name' },
+        el('span', { class: 'line' }, el('span', { class: 'label' }, p.name),
+          s.trustPrompt ? el('span', { class: 'pill' }, 'Needs you') : ''),
+        el('span', { class: 'meta' }, detail)),
       s.trustPrompt ? el('button', { class: 'fill', disabled: busy, onclick: () => trust(p) }, 'Trust') : '',
       s.url ? el('a', { class: 'btn', href: s.url, target: '_blank' }, 'Open') : '',
       el('button', { class: 'stop', disabled: busy, onclick: () => stop(p) }, 'Stop'));
