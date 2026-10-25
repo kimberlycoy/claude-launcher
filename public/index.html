@@ -82,10 +82,8 @@
   .stop { color: var(--danger); }
   .link { border: 0; min-height: 32px; padding: 0 4px; color: var(--accent-ink); font-size: 15px; }
 
-  /* Folded lists: the top of the third row shows, cut off, above a down arrow. */
-  .clip { max-height: 30px; overflow: hidden; cursor: pointer; border-top: 1px solid var(--line); }
-  .clip .row { pointer-events: none; }
-  .down { width: 100%; border: 0; border-top: 1px solid var(--line); border-radius: 0; min-height: 36px; color: var(--accent-ink); font-size: 18px; }
+  /* Folded lists: three rows, then a down arrow with the number hidden. */
+  .down { width: 100%; border: 0; border-top: 1px solid var(--line); border-radius: 0; min-height: 44px; color: var(--accent-ink); white-space: pre; }
   .create input {
     flex: 1; min-width: 0; height: 40px; font: inherit; font-size: 16px; padding: 0 14px;
     border: 1px solid var(--control); border-radius: 8px; background: var(--bg); color: var(--text);
@@ -155,10 +153,10 @@
     const sections = [section(head('New project'),
       el('div', { class: 'card' }, ...fold('create', groups.map(createRow))))];
 
-    // A server waiting for Trust past the second row keeps Running open, so its button shows.
+    // A server waiting for Trust past the third row keeps Running open, so its button shows.
     if (running.length) sections.push(section(head('Running', running.length),
       el('div', { class: 'card' }, ...fold('running', running.map(project),
-        running.slice(2).some((p) => p.server.trustPrompt)))));
+        running.slice(3).some((p) => p.server.trustPrompt)))));
 
     for (const g of groups) {
       const idle = g.projects.filter((p) => !p.server);
@@ -175,18 +173,17 @@
       el('h2', {}, title, count == null ? '' : el('span', { class: 'count' }, String(count))));
   }
 
-  // Lists show two rows, then the top of the third, cut off, above a down arrow.
+  // Lists show three rows, then a down arrow with the number of rows hidden.
   // The 15-second refresh rebuilds the page, so open lists are remembered by key.
   const unfolded = {};
   function fold(key, rows, forceOpen = false) {
-    if (rows.length <= 2) return rows;
+    if (rows.length <= 3) return rows;
     const toggle = () => { unfolded[key] = !unfolded[key]; refresh(); };
-    if (unfolded[key] || forceOpen) return [...rows,
-      forceOpen ? '' : el('button', { class: 'down', 'aria-label': 'Show fewer', 'aria-expanded': 'true', onclick: toggle }, '⌃')];
-    for (const c of rows[2].querySelectorAll('input, button, a')) c.tabIndex = -1;
-    return [...rows.slice(0, 2),
-      el('div', { class: 'clip', 'aria-hidden': 'true', onclick: toggle }, rows[2]),
-      el('button', { class: 'down', 'aria-label': `Show all ${rows.length}`, 'aria-expanded': 'false', onclick: toggle }, '⌄')];
+    if (forceOpen) return rows;
+    const open = !!unfolded[key];
+    return [...(open ? rows : rows.slice(0, 3)),
+      el('button', { class: 'down', 'aria-expanded': String(open), onclick: toggle },
+        open ? '⌃  Show fewer' : `⌄  ${rows.length - 3} more`)];
   }
 
   function project(p) {
