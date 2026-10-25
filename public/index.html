@@ -58,8 +58,6 @@
      .split is the one full-width line, between running and not running. */
   .row { position: relative; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 12px 6px 16px; }
   .row + .row::before { content: ''; position: absolute; top: 0; left: 16px; right: 0; border-top: 1px solid var(--line); }
-  /* On a group page running projects get their own card above the rest. */
-  .card + .card { margin-top: 10px; }
   .row button, .row a.btn { min-height: 34px; padding: 0 12px; font-size: 14px; }
   .name { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: break-word; }
   .meta { display: block; color: var(--muted); font-size: 13px; font-weight: 400; margin-top: 2px; font-variant-numeric: tabular-nums; }
@@ -314,12 +312,15 @@
   function groupPage(g) {
     const running = g.projects.filter((p) => p.server).sort(byTrustThenName);
     const idle = g.projects.filter((p) => !p.server);
-    // Running in one card, the rest by name in a second, under one heading. No folding on this page.
+    // Running, Recent, then every project by name whatever its state. No folding on this page.
+    const cutoff = Date.now() - settings.recentDays * 864e5;
+    const recent = idle.filter((p) => p.changed && p.changed >= cutoff)
+      .sort((a, b) => b.changed - a.changed).slice(0, settings.recentCount);
     return [
       section(el('div', { class: 'card' }, createRow(g))),
-      section(head('Projects', g.projects.length),
-        running.length ? el('div', { class: 'card' }, ...running.map(project)) : '',
-        idle.length ? el('div', { class: 'card' }, ...idle.map(project)) : ''),
+      running.length ? section(head('Running', running.length), el('div', { class: 'card' }, ...running.map(project))) : '',
+      recent.length ? section(head('Recent', recent.length), el('div', { class: 'card' }, ...recent.map(project))) : '',
+      section(head('All projects', g.projects.length), el('div', { class: 'card' }, ...g.projects.map(project))),
     ];
   }
 
