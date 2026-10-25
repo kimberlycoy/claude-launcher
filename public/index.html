@@ -110,13 +110,17 @@
   // Running projects go in their own section at the top; the groups below list the rest.
   function render({ groups }) {
     const running = groups.flatMap((g) => g.projects.filter((p) => p.server).map((p) => ({ ...p, group: g.title })))
-      .sort((a, b) => a.server.started - b.server.started);
+      .sort((a, b) => a.name.localeCompare(b.name));
     const sections = [el('section', {},
-      el('h2', {}, el('button', { 'aria-expanded': String(createOpen), onclick: () => { createOpen = !createOpen; refresh(); } }, 'New project')),
+      toggle('New project', createOpen, () => { createOpen = !createOpen; }),
       createOpen ? el('div', { class: 'card' }, ...groups.map(createRow)) : '')];
+    // More than three running servers collapse, unless one is waiting for Trust.
+    const collapsible = running.length > 3 && !running.some((p) => p.server.trustPrompt);
+    const showRunning = !collapsible || runningOpen;
     if (running.length) sections.push(el('section', {},
-      el('h2', {}, `Running · ${running.length}`),
-      el('div', { class: 'card running' }, ...running.map(project))));
+      collapsible ? toggle(`Running · ${running.length}`, runningOpen, () => { runningOpen = !runningOpen; })
+        : el('h2', {}, `Running · ${running.length}`),
+      showRunning ? el('div', { class: 'card running' }, ...running.map(project)) : ''));
     for (const g of groups) {
       const idle = g.projects.filter((p) => !p.server);
       if (idle.length) sections.push(el('section', {},
@@ -145,6 +149,11 @@
   // The 15-second refresh rebuilds the page, so keep typed names across renders.
   const drafts = {};
   let createOpen = false; // New project starts closed on every load
+  let runningOpen = false;
+
+  function toggle(label, open, flip) {
+    return el('h2', {}, el('button', { 'aria-expanded': String(open), onclick: () => { flip(); refresh(); } }, label));
+  }
 
   function createRow(g) {
     return el('div', { class: 'project row create' },
