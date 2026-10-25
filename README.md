@@ -11,9 +11,9 @@ The page has a toolbar at the bottom with a page for each project group set in c
 - Pull down from the top of a page to reload it. Group pages also refresh every 15 seconds.
 - A group's tab uses its "short" name from config.local.json, or the title without "projects".
 
-With more than one Claude account (for example personal and work), each project group belongs to one account, and a switch at the top of Home shows one account at a time: the toolbar and Home show only that account's groups, and Home shows who it's signed in as. Servers for both accounts can run at once; the switch only changes what the page shows, and its tabs count each account's running servers. The Claude iPhone app only lists Remote Control servers for the account it's signed in to, so switch accounts there too.
+With more than one Claude account (for example personal and work), each project group belongs to one account, and a switch in Settings shows one account at a time: the toolbar and pages show only that account's groups, and Settings shows who it's signed in as. Servers for both accounts can run at once; the switch only changes what the page shows, and its tabs count each account's running servers. The Claude iPhone app only lists Remote Control servers for the account it's signed in to, so switch accounts there too.
 
-<img src="docs/screenshot.png" alt="Claude Launcher on an iPhone" width="320">
+<img src="docs/screenshot.png" alt="Claude Launcher on an iPhone, showing a project group page (sample data)" width="320">
 
 URL (tailnet only): https://<mac-name>.<tailnet>.ts.net/rc
 
