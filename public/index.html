@@ -233,8 +233,10 @@
 
   function createPeek(groups) {
     const open = () => { createOpen = true; refresh(); };
+    const rows = groups.map(createRow);
+    for (const c of rows.flatMap((row) => [...row.querySelectorAll('input, button')])) c.tabIndex = -1;
     return [
-      el('div', { class: 'clip', inert: '', onclick: open }, ...groups.map(createRow)),
+      el('div', { class: 'clip', 'aria-hidden': 'true', onclick: open }, ...rows),
       el('button', { class: 'down', 'aria-label': 'Show New project', 'aria-expanded': 'false', onclick: open }, '\u2304'),
     ];
   }
