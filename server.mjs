@@ -33,6 +33,7 @@ const ACCOUNTS = (CONFIG.accounts || [{ id: 'default', title: 'Claude' }]).map((
 }));
 const GROUPS = CONFIG.groups.map((g) => ({
   title: g.title,
+  short: g.short || g.title.replace(/\s+projects$/i, ''),
   dir: expand(g.dir),
   skip: g.skip || [],
   account: g.account || ACCOUNTS[0].id,
@@ -125,7 +126,7 @@ async function listProjects() {
       const s = await stat(path).catch(() => null); // follows symlinks
       if (s?.isDirectory()) projects.push({ name, path });
     }
-    groups.push({ title: g.title, dir: g.dir, account: g.account, projects });
+    groups.push({ title: g.title, short: g.short, dir: g.dir, account: g.account, projects });
   }
   return groups;
 }
@@ -167,11 +168,55 @@ async function readPane(id) {
   return { url: info.url || null, sessions, trustPrompt };
 }
 
+// "Recent" means a file in the project changed lately. Scanning is capped per project
+// and cached, so the page's 15-second refresh doesn't keep walking the disk.
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'out', 'coverage', 'target', 'vendor',
+  'venv', '__pycache__', 'Pods', 'DerivedData']);
+const SCAN_FILES = 3000;
+const SCAN_DEPTH = 6;
+const CHANGED_TTL = 5 * 60 * 1000;
+const changed = new Map(); // project path -> { at, ms }
+let scanning = null;
+
+async function newestFile(root) {
+  let newest = 0, files = 0;
+  const stack = [[root, 0]];
+  while (stack.length && files < SCAN_FILES) {
+    const [dir, depth] = stack.pop();
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    const paths = [];
+    for (const e of entries) {
+      if (e.name.startsWith('.') || SKIP_DIRS.has(e.name)) continue; // hidden covers .git
+      if (e.isDirectory()) { if (depth < SCAN_DEPTH) stack.push([join(dir, e.name), depth + 1]); }
+      else if (e.isFile() && files++ < SCAN_FILES) paths.push(join(dir, e.name));
+    }
+    for (const s of await Promise.all(paths.map((f) => stat(f).catch(() => null))))
+      if (s && s.mtimeMs > newest) newest = s.mtimeMs;
+  }
+  return newest || null;
+}
+
+function scanChanged(paths) {
+  const stale = paths.filter((p) => !(Date.now() - (changed.get(p)?.at || 0) < CHANGED_TTL));
+  if (!stale.length || scanning) return scanning;
+  scanning = (async () => {
+    for (const p of stale) changed.set(p, { at: Date.now(), ms: await newestFile(p) });
+  })().finally(() => { scanning = null; });
+  return scanning;
+}
+
 async function state() {
   const [groups, servers, infos] = await Promise.all([
     listProjects(), listServers(), Promise.all(ACCOUNTS.map(accountInfo))]);
+  const paths = groups.flatMap((g) => g.projects.map((p) => p.path));
+  // Wait briefly for a scan so the first load usually has recents; later loads use the cache.
+  const scan = scanChanged(paths);
+  if (scan) await Promise.race([scan, new Promise((r) => setTimeout(r, 1500))]);
   for (const g of groups)
-    for (const p of g.projects) p.server = servers.find((s) => s.path === p.path) || null;
+    for (const p of g.projects) {
+      p.server = servers.find((s) => s.path === p.path) || null;
+      p.changed = changed.get(p.path)?.ms ?? null;
+    }
   const accounts = ACCOUNTS.map((a, i) => ({ id: a.id, title: a.title, configDir: a.configDir, ...infos[i] }));
   return { accounts, groups };
 }

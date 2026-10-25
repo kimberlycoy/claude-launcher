@@ -2,9 +2,15 @@
 
 A one-page web app for starting and stopping Claude Code Remote Control servers on your Mac from your iPhone, over Tailscale.
 
-The page lists the folders in each project group set in config.local.json (for example ~/dev/personal and ~/dev/work). Start runs `claude remote-control` in that folder inside a detached tmux session, one server per project. New sessions opened for it from the Claude iPhone app (or the Open link) run in that folder and are named after the project. New project, at the top, starts closed; tap it to show a row per group. Each row makes an empty folder with the name you type and starts a server in it. Running projects are listed next, alphabetically, with how many sessions they have, an Open link and a Stop button; with more than three, the section starts closed.
+The page has a toolbar at the bottom with Home, a page for each project group set in config.local.json (for example ~/dev/personal and ~/dev/work), and Settings. Start runs `claude remote-control` in a project folder inside a detached tmux session, one server per project. New sessions opened for it from the Claude iPhone app (or the Open link) run in that folder and are named after the project.
 
-With more than one Claude account (for example personal and work), each project group belongs to one account, and a switch at the top shows one account at a time: its projects, its running servers and who it's signed in as. Servers for both accounts can run at once; the switch only changes what the page shows, and its tabs count each account's running servers. The Claude iPhone app only lists Remote Control servers for the account it's signed in to, so switch accounts there too.
+- Home shows, for each group, its running servers (with Open and Stop) and its recent projects: folders where a file changed in the last few days, with Start. The scan skips hidden folders such as .git, node_modules and build output, reads at most 3,000 files per project, and is cached for 5 minutes.
+- A group's page has New project (makes an empty folder with the name you type and starts a server in it), its running servers, and the rest of its projects.
+- Settings, saved in the browser: rows shown before a list folds, the recent window and count, and the theme.
+- Pull down from the top of a page to reload it. Home also refreshes every 15 seconds.
+- A group's tab uses its "short" name from config.local.json, or the title without "projects".
+
+With more than one Claude account (for example personal and work), each project group belongs to one account, and a switch at the top of Home shows one account at a time: the toolbar and Home show only that account's groups, and Home shows who it's signed in as. Servers for both accounts can run at once; the switch only changes what the page shows, and its tabs count each account's running servers. The Claude iPhone app only lists Remote Control servers for the account it's signed in to, so switch accounts there too.
 
 <img src="docs/screenshot.png" alt="Claude Launcher on an iPhone" width="320">
 

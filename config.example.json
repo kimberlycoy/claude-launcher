@@ -5,7 +5,7 @@
     { "id": "work", "title": "Work", "configDir": "~/.claude" }
   ],
   "groups": [
-    { "title": "Personal projects", "dir": "~/dev/personal", "account": "personal" },
+    { "title": "Personal projects", "short": "Personal", "dir": "~/dev/personal", "account": "personal" },
     { "title": "Work projects", "dir": "~/dev/work", "skip": ["archive"], "account": "work" }
   ]
 }
