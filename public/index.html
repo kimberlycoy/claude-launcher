@@ -54,14 +54,17 @@
   h2 .count { color: var(--muted); font-weight: 400; margin-left: 6px; font-variant-numeric: tabular-nums; }
 
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-  .row { display: flex; align-items: center; gap: 10px; min-height: 60px; padding: 10px 12px 10px 16px; }
-  .row + .row { border-top: 1px solid var(--line); }
+  /* Lists read as one list: short rows, separators inset to the text, compact buttons.
+     .split is the one full-width line, between running and not running. */
+  .row { position: relative; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 12px 6px 16px; }
+  .row + .row::before { content: ''; position: absolute; top: 0; left: 16px; right: 0; border-top: 1px solid var(--line); }
+  .row.split::before { left: 0; border-top-color: var(--control); }
+  .row button, .row a.btn { min-height: 34px; padding: 0 12px; font-size: 14px; }
   .name { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: break-word; }
   .meta { display: block; color: var(--muted); font-size: 13px; font-weight: 400; margin-top: 2px; font-variant-numeric: tabular-nums; }
   .server .line { display: flex; align-items: center; min-width: 0; }
   .server .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .server { gap: 8px; }
-  .server button, .server a.btn { padding: 0 14px; }
   /* A server waiting for Trust is the one row that needs you: a pale pill beside its name. */
   .pill {
     flex: none; white-space: nowrap; margin-left: 8px;
@@ -91,11 +94,12 @@
   /* Folded lists: three rows, then a down arrow with the number hidden. */
   .down { width: 100%; border: 0; border-top: 1px solid var(--line); border-radius: 0; min-height: 44px; color: var(--accent-ink); white-space: pre; }
   .create input {
-    flex: 1; min-width: 0; height: 40px; font: inherit; font-size: 16px; padding: 0 14px;
+    flex: 1; min-width: 0; height: 36px; font: inherit; font-size: 16px; padding: 0 14px;
     border: 1px solid var(--control); border-radius: 8px; background: var(--bg); color: var(--text);
   }
   .create input::placeholder { color: var(--muted); opacity: 1; }
   .create input:focus-visible { outline-offset: 0; }
+  .hint { padding: 0 16px 10px; margin: 0; }
   .loading, .empty { color: var(--muted); padding: 18px 16px; }
   .empty { font-size: 15px; }
 
@@ -254,13 +258,13 @@
   function groupPage(g) {
     const running = g.projects.filter((p) => p.server).sort(byTrustThenName);
     const idle = g.projects.filter((p) => !p.server);
-    const out = [section(head('New project'), el('div', { class: 'card' }, createRow(g)))];
-    if (running.length) out.push(section(head('Running', running.length),
-      el('div', { class: 'card' }, ...fold(g.title + ':running', running.map(project), trustHidden(running)))));
-    out.push(section(head(running.length ? 'Not running' : 'Projects', idle.length),
-      idle.length ? el('div', { class: 'card' }, ...fold(g.title + ':all', idle.map(project)))
-        : el('div', { class: 'card empty' }, 'Every project here is running.')));
-    return out;
+    // One list: running first, a line, then the rest by name. No folding on this page.
+    const rows = [...running.map(project), ...idle.map(project)];
+    if (running.length && idle.length) rows[running.length].classList.add('split');
+    return [
+      section(el('div', { class: 'card' }, createRow(g))),
+      section(head('Projects', g.projects.length), el('div', { class: 'card' }, ...rows)),
+    ];
   }
 
   function settingsPage() {
@@ -329,20 +333,38 @@
   // Refreshes rebuild the page, so keep typed names across renders.
   const drafts = {};
 
+  // "My New App!" becomes "my-new-app": the server only accepts letters, numbers, . _ and -.
+  const folderName = (s) => s.trim().toLowerCase()
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9._-]+/g, '-').replace(/-{2,}/g, '-')
+    .replace(/^[^a-z0-9]+|[-.]+$/g, '').slice(0, 64);
+
   function createRow(g) {
-    return el('div', { class: 'row create' },
+    const name = drafts[g.title] || '';
+    const fixed = folderName(name);
+    const hint = name.trim() && fixed !== name.trim() ? el('span', { class: 'meta hint' }, fixed ? `Will be ${fixed}` : 'Use some letters or numbers') : '';
+    const row = el('div', { class: 'row create' },
       el('input', {
-        placeholder: 'Folder name', 'aria-label': `New project in ${g.title}`,
+        placeholder: 'New project', 'aria-label': `New project in ${g.title}`,
         autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false',
         enterkeyhint: 'go', disabled: busy, value: drafts[g.title] || null,
-        oninput: (e) => { drafts[g.title] = e.target.value; },
+        oninput: (e) => { drafts[g.title] = e.target.value; showHint(e.target, g); },
         onkeydown: (e) => { if (e.key === 'Enter') create(g); },
       }),
       el('button', { class: 'start', disabled: busy, onclick: () => create(g) }, 'Create'));
+    return hint ? el('div', {}, row, hint) : row;
+  }
+
+  // Update just the hint while typing, so the input keeps focus.
+  function showHint(input, g) {
+    const name = input.value.trim(), fixed = folderName(name);
+    const card = input.closest('.card');
+    card.querySelector('.hint')?.remove();
+    if (name && fixed !== name) card.append(el('span', { class: 'meta hint' }, fixed ? `Will be ${fixed}` : 'Use some letters or numbers'));
   }
 
   async function create(g) {
-    const name = (drafts[g.title] || '').trim();
+    const name = folderName(drafts[g.title] || '');
     if (!name || busy) return;
     busy = true; setStatus(`Creating ${name} and starting Remote Control...`); render();
     try {
