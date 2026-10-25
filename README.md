@@ -1,6 +1,6 @@
 # Claude Launcher
 
-A one-page web app for starting and stopping Claude Code Remote Control servers on this Mac from an iPhone.
+A one-page web app for starting and stopping Claude Code Remote Control servers on your Mac from your iPhone, over Tailscale.
 
 The page lists the folders in each project group set in config.local.json (for example ~/dev/personal and ~/dev/work). Start runs `claude remote-control` in that folder inside a detached tmux session, one server per project. New sessions opened for it from the Claude iPhone app (or the Open link) run in that folder and are named after the project. Running projects are listed at the top with how many sessions they have, an Open link and a Stop button.
 
@@ -53,7 +53,7 @@ After code changes: `launchctl kickstart -k gui/$(id -u)/local.claude-launcher`.
 
 ## Security
 
-The page can start processes on this Mac. It listens only on 127.0.0.1 and is reachable only through `tailscale serve`. Requests from any Tailscale login other than allowedLogin (or the ALLOWED_LOGIN environment variable) are refused; the server won't start without one. POSTs must be JSON, and start only accepts folders from the project list.
+The page can start processes on your Mac. It listens only on 127.0.0.1 and is reachable only through `tailscale serve`. Requests from any Tailscale login other than allowedLogin (or the ALLOWED_LOGIN environment variable) are refused; the server won't start without one. POSTs must be JSON, and start only accepts folders from the project list.
 
 ## Files
 
