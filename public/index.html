@@ -42,6 +42,15 @@
   #status.error { color: var(--danger); }
   #status button { margin-left: 8px; }
 
+  /* Account switch: one account's projects and servers at a time. */
+  .accounts { display: flex; gap: 0; margin: 16px 0 6px; border: 1px solid var(--control); border-radius: 9px; padding: 3px; background: var(--card); }
+  .accounts button { flex: 1; border: 0; border-radius: 6px; min-height: 36px; color: var(--muted); }
+  .accounts button[aria-pressed="true"] { background: var(--press); color: var(--text); font-weight: 600; }
+  .accounts .count { margin-left: 6px; font-weight: 400; color: var(--accent-ink); font-variant-numeric: tabular-nums; }
+  .who { color: var(--muted); font-size: 13px; margin: 0 2px; overflow-wrap: anywhere; }
+  .who.out { color: var(--danger); }
+  .who code { font-size: 12px; }
+
   section { margin-top: 28px; }
   .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 2px 10px; }
   h2 { font-size: 17px; font-weight: 600; margin: 0; }
@@ -105,6 +114,7 @@
 <div id="ptr" aria-hidden="true"></div>
 <main>
   <header><h1>Claude Launcher</h1></header>
+  <div id="account"></div>
   <div id="status" role="status"></div>
   <div id="groups"><div class="card loading">Loading projects…</div></div>
 </main>
@@ -112,6 +122,7 @@
   const base = location.pathname;
   const $groups = document.getElementById('groups');
   const $status = document.getElementById('status');
+  const $account = document.getElementById('account');
   let busy = false;
 
   function setStatus(text, isError) {
@@ -146,8 +157,44 @@
     return e;
   }
 
-  // Page order: New project, Running, then each group's idle projects.
-  function render({ groups }) {
+  // The chosen account is remembered on this phone; storage can be unavailable.
+  let current = null;
+  try { current = localStorage.getItem('account'); } catch {}
+  let lastState = null;
+
+  function pick(id) {
+    current = id;
+    try { localStorage.setItem('account', id); } catch {}
+    setStatus('');
+    if (lastState) render(lastState);
+  }
+
+  // With more than one account, a switch shows one account at a time and who it's signed in as.
+  function renderAccount(accounts, groups) {
+    if (accounts.length < 2) return $account.replaceChildren();
+    const runningIn = (id) => groups.filter((g) => g.account === id)
+      .reduce((n, g) => n + g.projects.filter((p) => p.server).length, 0);
+    const a = accounts.find((x) => x.id === current);
+    const who = a.loggedIn
+      ? el('div', { class: 'who' }, [a.email, a.org].filter(Boolean).join(' · '))
+      : el('div', { class: 'who out' }, `Not signed in. On the Mac, run `,
+        el('code', {}, `${a.configDir ? `CLAUDE_CONFIG_DIR=${a.configDir} ` : ''}claude auth login`));
+    $account.replaceChildren(
+      el('div', { class: 'accounts', role: 'group', 'aria-label': 'Account' }, ...accounts.map((x) => {
+        const n = runningIn(x.id);
+        return el('button', { 'aria-pressed': String(x.id === current), onclick: () => pick(x.id) },
+          x.title, n ? el('span', { class: 'count', 'aria-label': `${n} running` }, String(n)) : '');
+      })),
+      who);
+  }
+
+  // Page order: account switch, New project, Running, then each group's idle projects.
+  function render(state) {
+    lastState = state;
+    const { accounts } = state;
+    if (!accounts.some((a) => a.id === current)) current = accounts[0].id;
+    renderAccount(accounts, state.groups);
+    const groups = state.groups.filter((g) => g.account === current);
     const running = groups.flatMap((g) => g.projects.filter((p) => p.server))
       .sort((a, b) => a.name.localeCompare(b.name));
     const sections = [section(head('New project'),

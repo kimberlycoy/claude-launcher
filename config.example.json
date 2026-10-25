@@ -1,7 +1,11 @@
 {
   "allowedLogin": "you@example.com",
+  "accounts": [
+    { "id": "personal", "title": "Personal", "configDir": "~/.claude-personal" },
+    { "id": "work", "title": "Work", "configDir": "~/.claude" }
+  ],
   "groups": [
-    { "title": "Personal projects", "dir": "~/dev/personal" },
-    { "title": "Work projects", "dir": "~/dev/work", "skip": ["archive"] }
+    { "title": "Personal projects", "dir": "~/dev/personal", "account": "personal" },
+    { "title": "Work projects", "dir": "~/dev/work", "skip": ["archive"], "account": "work" }
   ]
 }

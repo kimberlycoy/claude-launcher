@@ -4,6 +4,8 @@ A one-page web app for starting and stopping Claude Code Remote Control servers 
 
 The page lists the folders in each project group set in config.local.json (for example ~/dev/personal and ~/dev/work). Start runs `claude remote-control` in that folder inside a detached tmux session, one server per project. New sessions opened for it from the Claude iPhone app (or the Open link) run in that folder and are named after the project. New project, at the top, starts closed; tap it to show a row per group. Each row makes an empty folder with the name you type and starts a server in it. Running projects are listed next, alphabetically, with how many sessions they have, an Open link and a Stop button; with more than three, the section starts closed.
 
+With more than one Claude account (for example personal and work), each project group belongs to one account, and a switch at the top shows one account at a time: its projects, its running servers and who it's signed in as. Servers for both accounts can run at once; the switch only changes what the page shows, and its tabs count each account's running servers. The Claude iPhone app only lists Remote Control servers for the account it's signed in to, so switch accounts there too.
+
 <img src="docs/screenshot.png" alt="Claude Launcher on an iPhone" width="320">
 
 URL (tailnet only): https://<mac-name>.<tailnet>.ts.net/rc
@@ -21,6 +23,14 @@ URL (tailnet only): https://<mac-name>.<tailnet>.ts.net/rc
 1. Create the config, then set allowedLogin to your Tailscale login and list your project folders:
 
         cp config.example.json config.local.json
+
+   For more than one account, add "accounts" (each with an id, title and configDir) and give each group an "account"; see config.example.json. ~/.claude is the CLI's default folder. Sign in to each other account once on the Mac, for example:
+
+        CLAUDE_CONFIG_DIR=~/.claude-personal claude auth login
+
+   Each config folder has its own settings, skills, CLAUDE.md, memory and session history. To share the global ones, symlink them from ~/.claude:
+
+        cd ~/.claude-personal && ln -s ../.claude/CLAUDE.md ../.claude/settings.json ../.claude/skills .
 
 2. Install the launchd agent (run from this folder):
 
@@ -52,6 +62,7 @@ After code changes: `launchctl kickstart -k gui/$(id -u)/local.claude-launcher`.
 ## Troubleshooting
 
 - Page doesn't load: `launchctl list | grep claude-launcher`, then check server.log. Check `tailscale serve status` shows /rc.
+- Start says an account isn't signed in: run the `claude auth login` command the page shows, on the Mac.
 - Server never shows an Open link or never appears in the app: `tmux attach -t <name>` to see what it's waiting on. Common causes are a logged-out CLI (`claude auth status`) or a macOS file-access prompt for a protected folder.
 
 ## Security
