@@ -123,8 +123,8 @@
   .segments button { border: 0; border-radius: 0; min-height: 36px; padding: 0 12px; font-size: 14px; }
   .segments button + button { border-left: 1px solid var(--control); }
   .segments [aria-pressed="true"] { background: var(--press); font-weight: 600; }
-  /* Account switch on Home, shown only with more than one account. */
-  .account { margin: 12px 0 28px; }
+  /* Account switch in Settings, shown only with more than one account. */
+  .account { margin: 0; }
   .account .segments { display: flex; }
   .account .segments button { flex: 1; min-height: 40px; font-size: 15px; }
   .account .count { margin-left: 6px; font-weight: 400; color: var(--accent-ink); font-variant-numeric: tabular-nums; }
@@ -147,6 +147,26 @@
   nav svg { width: 24px; height: 24px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
   nav span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   nav a[aria-current="page"] { color: var(--accent-ink); font-weight: 600; }
+  /* Group tabs: a count of running servers on the icon, or a dot when one needs Trust. */
+  nav .icon { position: relative; display: block; line-height: 0; font-style: normal; }
+  nav .badge {
+    position: absolute; top: -4px; left: 16px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
+    background: var(--text); color: var(--card); font: 600 11px/17px -apple-system, sans-serif; font-style: normal; text-align: center; font-variant-numeric: tabular-nums;
+  }
+  nav .needs { position: absolute; top: -2px; left: 18px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 2px solid var(--card); }
+
+  /* Activity */
+  .head.range { align-items: center; margin-top: 8px; }
+  .total { padding: 16px; }
+  .figure { font-size: 30px; font-weight: 700; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+  .chart { display: flex; align-items: flex-end; gap: 3px; height: 120px; margin: 18px 0 8px; }
+  .chart .col { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; min-width: 0; }
+  .chart .bar { width: 100%; max-width: 28px; background: var(--accent); border-radius: 3px 3px 0 0; }
+  .chart span { height: 16px; margin-top: 4px; font-size: 11px; color: var(--muted); }
+  .share .time { flex: none; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .track { display: block; height: 3px; margin-top: 6px; }
+  .fillbar { display: block; height: 3px; border-radius: 2px; background: var(--control); }
+  .fillbar.lead { background: var(--accent); }
   nav a[aria-current="page"] svg { stroke-width: 2.25; }
   nav a:active { background: var(--press); }
   /* Pull to refresh: iOS home-screen apps have no built-in one. */
@@ -236,29 +256,45 @@
     return e;
   }
 
-  // Pages: #/ is Home, #/<group> a group's page, #/settings Settings.
+  // Pages: #/<group> for each of the account's groups, #/activity, #/settings.
+  // The app opens on the last page used, else the first group.
   const slug = (g) => g.short.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   const route = () => decodeURIComponent(location.hash.replace(/^#\/?/, ''));
 
   function render() {
     if (!state) return;
     if (!state.accounts.some((a) => a.id === account)) account = state.accounts[0].id;
-    const r = route();
+    let r = route();
+    const known = (x) => x === 'activity' || x === 'settings' || mine().some((g) => slug(g) === x);
+    if (!known(r)) {
+      const last = localStorage.getItem('lastPage');
+      r = known(last) ? last : mine()[0] ? slug(mine()[0]) : 'settings';
+      history.replaceState(null, '', '#/' + r);
+    }
+    localStorage.setItem('lastPage', r);
     const group = mine().find((g) => slug(g) === r);
-    const page = r === 'settings' ? 'settings' : group ? 'group' : 'home';
     $tabs.replaceChildren(
-      tab('#/', 'Home', 'home', page === 'home'),
-      ...mine().map((g) => tab('#/' + slug(g), g.short, 'folder', group === g)),
-      tab('#/settings', 'Settings', 'gear', page === 'settings'));
-    if (page === 'settings') { $title.textContent = 'Settings'; $view.replaceChildren(...settingsPage()); }
-    else if (group) { $title.textContent = group.title; $view.replaceChildren(...groupPage(group)); }
-    else { $title.textContent = 'Claude Launcher'; $view.replaceChildren(...homePage()); }
+      ...mine().map((g) => groupTab(g, group === g)),
+      tab('#/activity', 'Activity', 'chart', r === 'activity'),
+      tab('#/settings', 'Settings', 'gear', r === 'settings'));
+    if (r === 'settings') { $title.textContent = 'Settings'; $view.replaceChildren(...settingsPage()); }
+    else if (r === 'activity') { $title.textContent = 'Activity'; $view.replaceChildren(...activityPage()); }
+    else { $title.textContent = group.title; $view.replaceChildren(...groupPage(group)); }
+  }
+
+  // A group's tab shows how many servers run there, and a dot if one needs Trust.
+  function groupTab(g, current) {
+    const running = g.projects.filter((p) => p.server);
+    const a = tab('#/' + slug(g), g.short, 'folder', current);
+    const mark = a.querySelector('.icon');
+    if (running.some((p) => p.server.trustPrompt)) mark.append(el('i', { class: 'needs', 'aria-label': 'needs Trust' }));
+    else if (running.length) mark.append(el('i', { class: 'badge', 'aria-label': `${running.length} running` }, String(running.length)));
+    return a;
   }
 
   // Toolbar icons: 24px outline paths (Lucide shapes), drawn in the tab's text color.
   const ICONS = {
-    home: ['M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8',
-      'M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],
+    chart: ['M3 3v16a2 2 0 0 0 2 2h16', 'M18 17V9', 'M13 17V5', 'M8 17v-3'],
     folder: ['M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'],
     gear: ['M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z',
       'M15 12a3 3 0 1 1-6 0a3 3 0 1 1 6 0'],
@@ -273,43 +309,115 @@
     return svg;
   }
   const tab = (href, label, name, current) =>
-    el('a', { href, 'aria-current': current ? 'page' : null }, icon(name), el('span', {}, label));
+    el('a', { href, 'aria-current': current ? 'page' : null }, el('i', { class: 'icon' }, icon(name)), el('span', {}, label));
 
   // Servers waiting for Trust first, then by name.
   const byTrustThenName = (a, b) => (b.server.trustPrompt - a.server.trustPrompt) || a.name.localeCompare(b.name);
-
-  // Home: New project for each group, then each group's recent projects that aren't running.
-  function homePage() {
-    const cutoff = Date.now() - settings.recentDays * 864e5;
-    const days = settings.recentDays === 1 ? 'day' : settings.recentDays + ' days';
-    return [
-      section(head('New project'), el('div', { class: 'card' }, ...state.groups.map((g) => createRow(g, g.short)))),
-      ...state.groups.map((g) => {
-        const recent = g.projects.filter((p) => !p.server && p.changed && p.changed >= cutoff)
-          .sort((a, b) => b.changed - a.changed).slice(0, settings.recentCount);
-        return el('section', { class: 'group' },
-          el('div', { class: 'head' }, el('h2', {}, el('a', { href: '#/' + slug(g), class: 'plain' }, g.title)),
-            el('a', { href: '#/' + slug(g) }, `All ${g.projects.length} \u203A`)),
-          el('h3', {}, 'Recent'),
-          recent.length ? el('div', { class: 'card' }, ...recent.map(project))
-            : el('div', { class: 'card empty' }, `Nothing changed in the last ${days}.`));
-      }),
-    ];
-  }
 
   function groupPage(g) {
     const running = g.projects.filter((p) => p.server).sort(byTrustThenName);
     const idle = g.projects.filter((p) => !p.server);
     // Running, Recent, then every project by name whatever its state. No folding on this page.
     const cutoff = Date.now() - settings.recentDays * 864e5;
-    const recent = idle.filter((p) => p.changed && p.changed >= cutoff)
-      .sort((a, b) => b.changed - a.changed).slice(0, settings.recentCount);
+    const recent = idle.filter((p) => lastTouch(p) >= cutoff)
+      .sort((a, b) => lastTouch(b) - lastTouch(a)).slice(0, settings.recentCount);
     return [
       section(el('div', { class: 'card' }, createRow(g))),
       running.length ? section(head('Running', running.length), el('div', { class: 'card' }, ...running.map(project))) : '',
       recent.length ? section(head('Recent', recent.length), el('div', { class: 'card' }, ...recent.map(project))) : '',
       section(head('All projects', g.projects.length), el('div', { class: 'card' }, ...g.projects.map(project))),
     ];
+  }
+
+  // Recent means you last used Claude there; folders with no Claude use fall back to file changes.
+  const lastTouch = (p) => p.used ?? p.changed ?? 0;
+
+  // Activity: from Claude Code's session logs, loaded when the page opens.
+  let activity = null, activityRange = 7, activityLoading = false;
+  async function loadActivity() {
+    if (activityLoading) return;
+    activityLoading = true;
+    try { activity = await api('activity'); } catch (e) { setStatus(`Couldn't load activity (${e.message}).`, true); }
+    activityLoading = false;
+    if (route() === 'activity') render();
+  }
+
+  const hrs = (m) => m < 60 ? `${Math.round(m)} min` : `${Math.floor(m / 60)} hr` + (Math.round(m % 60) ? ` ${Math.round(m % 60)} min` : '');
+  const tokens = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(n);
+  const sum = (a) => a.reduce((x, y) => x + y, 0);
+
+  // Answers: how much am I using Claude, where does my time go, what have I neglected.
+  function activityPage() {
+    if (!activity) { loadActivity(); return [el('div', { class: 'card loading' }, 'Reading Claude session logs…')]; }
+    const n = activityRange, days = activity.days.slice(-n);
+    const slice = (a) => a.slice(-n);
+    const all = mine().flatMap((g) => g.projects.map((p) => ({ ...p, group: g, a: activity.projects[p.path] })));
+    const used = all.filter((p) => p.a && sum(slice(p.a.minutes)) > 0)
+      .map((p) => ({ name: p.name, meta: p.group.short, min: sum(slice(p.a.minutes)) }));
+    const else_ = activity.elsewhere && sum(slice(activity.elsewhere.minutes));
+    if (else_) used.push({ name: 'Elsewhere', meta: 'Folders outside your groups', min: else_ });
+    used.sort((a, b) => b.min - a.min);
+    const series = [...all.map((p) => p.a).filter(Boolean), activity.elsewhere].filter(Boolean);
+    const perDay = days.map((_, i) => sum(series.map((a) => slice(a.minutes)[i])));
+    const total = sum(perDay);
+    const sessions = sum(series.map((a) => n === 7 ? a.sessions7 : a.sessions30));
+    const written = sum(series.map((a) => sum(slice(a.tokens))));
+    const projectsUsed = used.filter((u) => u.name !== 'Elsewhere').length;
+
+    // Neglected: not used in 14 days, longest-forgotten first.
+    const cut = Date.now() - 14 * 864e5;
+    const neglected = all.filter((p) => !p.server && !(p.a?.lastUsed >= cut))
+      .sort((a, b) => (a.a?.lastUsed ?? 0) - (b.a?.lastUsed ?? 0));
+
+    const range = el('div', { class: 'segments' }, ...[7, 30].map((d) => el('button', {
+      'aria-pressed': String(n === d), onclick: () => { activityRange = d; render(); } }, `${d} days`)));
+    const peak = Math.max(...perDay, 1);
+    const label = (d, i) => n === 7 ? new Date(d + 'T12:00').toLocaleDateString([], { weekday: 'narrow' })
+      : (i % 7 === 0 || i === n - 1) ? String(+d.slice(8)) : '';
+    const chart = el('div', { class: 'chart', role: 'img', 'aria-label': `Time with Claude per day, most ${hrs(peak)}` },
+      ...days.map((d, i) => el('div', { class: 'col', title: `${d}: ${hrs(perDay[i])}` },
+        el('div', { class: 'bar', style: `height:${perDay[i] ? Math.max(2, perDay[i] / peak * 100) : 0}%` }),
+        el('span', {}, label(d, i)))));
+    const top = used[0]?.min || 1;
+    return [
+      el('div', { class: 'head range' }, el('span', { class: 'meta' }, `Last ${n} days`), range),
+      el('div', { class: 'card total' },
+        el('div', { class: 'figure' }, hrs(total)),
+        el('span', { class: 'meta' }, `with Claude across ${projectsUsed} ${projectsUsed === 1 ? 'project' : 'projects'} · ${sessions} sessions · ${tokens(written)} tokens written`),
+        chart,
+        el('span', { class: 'meta' }, `Busiest day ${hrs(peak)}. Time counts minutes with messages, plus gaps of up to 5 minutes.`)),
+      section(head('Where your time went'), used.length
+        ? el('div', { class: 'card' }, ...used.map((u, i) => el('div', { class: 'row share' },
+            el('div', { class: 'name' }, u.name, el('span', { class: 'meta' }, u.meta),
+              el('span', { class: 'track' }, el('span', { class: i ? 'fillbar' : 'fillbar lead', style: `width:${u.min / top * 100}%` }))),
+            el('span', { class: 'time' }, hrs(u.min)))))
+        : el('div', { class: 'card empty' }, `No Claude use in the last ${n} days.`)),
+      section(head('Neglected', neglected.length), neglected.length
+        ? el('div', { class: 'card' }, ...fold('neglected', neglected.map((p) => el('div', { class: 'row' },
+            el('div', { class: 'name' }, p.name, el('span', { class: 'meta' },
+              `${p.group.short} · ` + (p.a?.lastUsed ? 'Last used ' + ago(p.a.lastUsed) : `Not used in ${activity.logDays} days`))),
+            el('button', { class: 'start', disabled: busy, onclick: () => start(p) }, 'Start')))))
+        : el('div', { class: 'card empty' }, 'Every project was used in the last 14 days.')),
+    ];
+  }
+
+  // Each button counts the account's running servers; below is who it's signed in as.
+  function accountSwitch() {
+    if (state.accounts.length < 2) return [];
+    const running = (id) => state.groups.filter((g) => g.account === id)
+      .reduce((n, g) => n + g.projects.filter((p) => p.server).length, 0);
+    const pick = (id) => { account = id; localStorage.setItem('account', id); setStatus(''); render(); };
+    const a = state.accounts.find((x) => x.id === account);
+    return [section(head('Account'), el('div', { class: 'account' },
+      el('div', { class: 'segments', role: 'group', 'aria-label': 'Account' }, ...state.accounts.map((x) => {
+        const n = running(x.id);
+        return el('button', { 'aria-pressed': String(x.id === account), onclick: () => pick(x.id) },
+          x.title, n ? el('span', { class: 'count', 'aria-label': `, ${n} running` }, String(n)) : '');
+      })),
+      a.loggedIn
+        ? el('div', { class: 'who' }, [a.email, a.org].filter(Boolean).join(' · '))
+        : el('div', { class: 'who out' }, 'Not signed in. On the Mac, run ',
+          el('code', {}, `${a.configDir ? `CLAUDE_CONFIG_DIR=${a.configDir} ` : ''}claude auth login`))))];
   }
 
   function settingsPage() {
@@ -321,11 +429,12 @@
     const row = (label, detail, control) => el('div', { class: 'row setting' },
       el('div', { class: 'name' }, label, el('span', { class: 'meta' }, detail)), control);
     return [
+      ...accountSwitch(),
       section(head('Lists'), el('div', { class: 'card' },
         row('Rows before the arrow', 'Longer lists fold after this many', stepper('rows', 1, 20)))),
       section(head('Recent'), el('div', { class: 'card' },
-        row('Days to look back', 'A project is recent if a file changed in this time', stepper('recentDays', 1, 60)),
-        row('Projects per group', 'In Recent on Home and on group pages', stepper('recentCount', 1, 20)))),
+        row('Days to look back', 'Recent means you used Claude there in this time', stepper('recentDays', 1, 60)),
+        row('Projects per group', 'In Recent on each group page', stepper('recentCount', 1, 20)))),
       section(head('Appearance'), el('div', { class: 'card' },
         row('Theme', 'System follows your iPhone', el('div', { class: 'segments' },
           ...['system', 'light', 'dark'].map((t) => el('button', { 'aria-pressed': String(settings.theme === t), onclick: () => set('theme', t) },
@@ -360,7 +469,8 @@
   function project(p) {
     const s = p.server;
     if (!s) return el('div', { class: 'row' },
-      el('div', { class: 'name' }, p.name, p.changed ? el('span', { class: 'meta' }, 'Changed ' + ago(p.changed)) : ''),
+      el('div', { class: 'name' }, p.name, p.used ? el('span', { class: 'meta' }, 'Used ' + ago(p.used))
+        : p.changed ? el('span', { class: 'meta' }, 'Changed ' + ago(p.changed)) : ''),
       el('button', { class: 'start', disabled: busy, onclick: () => start(p) }, 'Start'));
     const n = s.sessions;
     const detail = s.trustPrompt ? 'Waiting to trust this folder'
@@ -497,7 +607,8 @@
   addEventListener('hashchange', () => { scrollTo(0, 0); render(); });
   refresh();
   // Only Home refreshes on its own; other pages use pull to reload.
-  setInterval(() => { if (!route() && !document.hidden) refresh(); }, 15000);
+  // Group pages refresh on their own; Activity and Settings use pull to reload.
+  setInterval(() => { if (!['activity', 'settings'].includes(route()) && !document.hidden) refresh(); }, 15000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 </script>
 </body>

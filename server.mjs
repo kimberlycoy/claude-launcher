@@ -10,11 +10,12 @@
 // Serves 127.0.0.1:8766. `tailscale serve --set-path /rc` exposes it to the tailnet.
 
 import { execFile } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
+import { createReadStream, readFileSync } from 'node:fs';
+import { mkdir, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
+import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 
 const run = promisify(execFile);
@@ -205,17 +206,136 @@ function scanChanged(paths) {
   return scanning;
 }
 
+// Activity comes from Claude Code's own session logs (<config dir>/projects/*/<session>.jsonl,
+// for every account), read-only. Each user or assistant message has a timestamp, the folder it ran in (cwd) and,
+// for replies, output tokens. Lines are matched with regexes rather than parsed: the logs
+// run to hundreds of MB, and the fields needed sit at the top level of each record.
+const LOG_DIRS = [...new Set(ACCOUNTS.map((a) => join(a.configDir || join(HOME, '.claude'), 'projects')))];
+const LOG_DAYS = 60; // older messages are ignored
+const ACTIVITY_DAYS = 30; // days sent to the page
+const ACTIVITY_TTL = 60 * 1000;
+const GAP_FILL = 5; // minutes between messages counted as still working
+const logCache = new Map(); // file -> { key, cwds: Map(cwd -> Map(minute -> output tokens)) }
+let activity = null, activityAt = 0, activityRun = null;
+
+async function readLog(file) {
+  const cwds = new Map();
+  const since = Date.now() - LOG_DAYS * 864e5;
+  const lines = createInterface({ input: createReadStream(file), crlfDelay: Infinity });
+  for await (const line of lines) {
+    if (!line.includes('"type":"assistant"') && !line.includes('"type":"user"')) continue;
+    const ts = Date.parse(line.match(/"timestamp":"([^"]+)"/)?.[1]);
+    const cwd = line.match(/"cwd":"((?:[^"\\]|\\.)*)"/)?.[1];
+    if (!(ts >= since) || !cwd) continue;
+    const minute = Math.floor(ts / 60000);
+    const out = Number(line.match(/"output_tokens":(\d+)/)?.[1] || 0);
+    const key = JSON.parse(`"${cwd}"`);
+    if (!cwds.has(key)) cwds.set(key, new Map());
+    const m = cwds.get(key);
+    m.set(minute, (m.get(minute) || 0) + out);
+  }
+  return cwds;
+}
+
+async function logFiles(dir, depth = 0) {
+  const out = [];
+  for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+    const p = join(dir, e.name);
+    if (e.isDirectory() && depth < 3) out.push(...await logFiles(p, depth + 1));
+    else if (e.isFile() && e.name.endsWith('.jsonl')) out.push(p);
+  }
+  return out;
+}
+
+const dayKey = (minute) => new Date(minute * 60000).toLocaleDateString('en-CA'); // YYYY-MM-DD, local
+
+async function computeActivity(groups) {
+  const since = Date.now() - LOG_DAYS * 864e5;
+  const files = (await Promise.all(LOG_DIRS.map((d) => logFiles(d)))).flat();
+  for (const f of files) {
+    const s = await stat(f).catch(() => null);
+    if (!s || s.mtimeMs < since) { logCache.delete(f); continue; }
+    const key = `${s.size}:${s.mtimeMs}`;
+    if (logCache.get(f)?.key !== key) logCache.set(f, { key, cwds: await readLog(f) });
+  }
+  for (const f of logCache.keys()) if (!files.includes(f)) logCache.delete(f);
+
+  // A log's folder may be a project, a worktree inside one, or the project's real path
+  // behind a symlink (Dropbox). Anything else counts as Elsewhere.
+  const projects = [];
+  for (const g of groups)
+    for (const p of g.projects) projects.push({ path: p.path, roots: [...new Set([p.path, await realpath(p.path).catch(() => p.path)])] });
+  const owner = (cwd) => projects.find((p) => p.roots.some((r) => cwd === r || cwd.startsWith(r + '/')))?.path ?? null;
+
+  const byProject = new Map(); // path or null -> { minutes: Map(minute -> tokens), sessions: Map(file -> last minute) }
+  for (const [file, { cwds }] of logCache)
+    for (const [cwd, minutes] of cwds) {
+      const key = owner(cwd);
+      if (!byProject.has(key)) byProject.set(key, { minutes: new Map(), sessions: new Map() });
+      const b = byProject.get(key);
+      let last = 0;
+      for (const [m, t] of minutes) { b.minutes.set(m, (b.minutes.get(m) || 0) + t); if (m > last) last = m; }
+      b.sessions.set(file, Math.max(b.sessions.get(file) || 0, last));
+    }
+
+  const today = Math.floor(Date.now() / 60000);
+  const days = [];
+  for (let i = ACTIVITY_DAYS - 1; i >= 0; i--) days.push(dayKey(today - i * 1440));
+  const summarize = (b) => {
+    const minutes = days.map(() => 0), tokens = days.map(() => 0);
+    const sorted = [...b.minutes.keys()].sort((x, y) => x - y);
+    sorted.forEach((m, i) => {
+      const d = days.indexOf(dayKey(m));
+      if (d < 0) return;
+      const gap = (sorted[i + 1] ?? Infinity) - m;
+      minutes[d] += 1 + (gap <= GAP_FILL ? gap - 1 : 0);
+      tokens[d] += b.minutes.get(m);
+    });
+    const cut7 = today - 7 * 1440, cut30 = today - 30 * 1440;
+    const lasts = [...b.sessions.values()];
+    return {
+      minutes, tokens,
+      sessions7: lasts.filter((m) => m >= cut7).length,
+      sessions30: lasts.filter((m) => m >= cut30).length,
+      lastUsed: sorted.length ? sorted.at(-1) * 60000 : null,
+    };
+  };
+  const out = { days, logDays: LOG_DAYS, projects: {}, elsewhere: null };
+  for (const [key, b] of byProject) {
+    if (key == null) out.elsewhere = summarize(b);
+    else out.projects[key] = summarize(b);
+  }
+  return out;
+}
+
+function refreshActivity(groups) {
+  if (activityRun || Date.now() - activityAt < ACTIVITY_TTL) return activityRun;
+  activityRun = computeActivity(groups)
+    .then((a) => { activity = a; activityAt = Date.now(); })
+    .catch((e) => console.error('activity:', e))
+    .finally(() => { activityRun = null; });
+  return activityRun;
+}
+
+async function getActivity() {
+  const groups = await listProjects();
+  const run = refreshActivity(groups);
+  if (!activity && run) await run;
+  return activity || { days: [], logDays: LOG_DAYS, projects: {}, elsewhere: null };
+}
+
 async function state() {
   const [groups, servers, infos] = await Promise.all([
     listProjects(), listServers(), Promise.all(ACCOUNTS.map(accountInfo))]);
   const paths = groups.flatMap((g) => g.projects.map((p) => p.path));
   // Wait briefly for a scan so the first load usually has recents; later loads use the cache.
-  const scan = scanChanged(paths);
-  if (scan) await Promise.race([scan, new Promise((r) => setTimeout(r, 1500))]);
+  const scan = Promise.all([scanChanged(paths), refreshActivity(groups)]);
+  await Promise.race([scan, new Promise((r) => setTimeout(r, 1500))]);
   for (const g of groups)
     for (const p of g.projects) {
       p.server = servers.find((s) => s.path === p.path) || null;
       p.changed = changed.get(p.path)?.ms ?? null;
+      p.used = activity?.projects[p.path]?.lastUsed ?? null; // last Claude message in this project
     }
   const accounts = ACCOUNTS.map((a, i) => ({ id: a.id, title: a.title, configDir: a.configDir, ...infos[i] }));
   return { accounts, groups };
@@ -328,6 +448,7 @@ createServer(async (req, res) => {
       return send(200, await readFile(join(PUBLIC, file)), type);
     }
     if (req.method === 'GET' && pathname === '/api/state') return send(200, await state());
+    if (req.method === 'GET' && pathname === '/api/activity') return send(200, await getActivity());
     if (req.method === 'POST' && pathname === '/api/start')
       return send(200, await start((await readJson(req)).path));
     if (req.method === 'POST' && pathname === '/api/create') {
