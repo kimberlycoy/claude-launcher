@@ -134,12 +134,16 @@
     display: flex; justify-content: center; background: var(--card); border-top: 1px solid var(--line);
     padding: 0 8px env(safe-area-inset-bottom);
   }
+  /* Each tab is an icon over a short label, like an iOS tab bar. */
   nav a {
-    flex: 1; max-width: 160px; min-height: 52px; display: flex; align-items: center; justify-content: center;
-    padding: 0 4px; text-align: center; font-size: 14px; font-weight: 500; line-height: 1.2;
+    flex: 1; max-width: 160px; min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px; padding: 6px 4px 4px; text-align: center; font-size: 11px; font-weight: 500; line-height: 1.2;
     color: var(--muted); text-decoration: none;
   }
+  nav svg { width: 24px; height: 24px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+  nav span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   nav a[aria-current="page"] { color: var(--accent-ink); font-weight: 600; }
+  nav a[aria-current="page"] svg { stroke-width: 2.25; }
   nav a:active { background: var(--press); }
   /* Pull to refresh: iOS home-screen apps have no built-in one. */
   html, body { overscroll-behavior-y: none; }
@@ -239,15 +243,33 @@
     const group = mine().find((g) => slug(g) === r);
     const page = r === 'settings' ? 'settings' : group ? 'group' : 'home';
     $tabs.replaceChildren(
-      tab('#/', 'Home', page === 'home'),
-      ...mine().map((g) => tab('#/' + slug(g), g.short, group === g)),
-      tab('#/settings', 'Settings', page === 'settings'));
+      tab('#/', 'Home', 'home', page === 'home'),
+      ...mine().map((g) => tab('#/' + slug(g), g.short, 'folder', group === g)),
+      tab('#/settings', 'Settings', 'gear', page === 'settings'));
     if (page === 'settings') { $title.textContent = 'Settings'; $view.replaceChildren(...settingsPage()); }
     else if (group) { $title.textContent = group.title; $view.replaceChildren(...groupPage(group)); }
     else { $title.textContent = 'Claude Launcher'; $view.replaceChildren(...homePage()); }
   }
 
-  const tab = (href, label, current) => el('a', { href, 'aria-current': current ? 'page' : null }, label);
+  // Toolbar icons: 24px outline paths (Lucide shapes), drawn in the tab's text color.
+  const ICONS = {
+    home: ['M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8',
+      'M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],
+    folder: ['M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'],
+    gear: ['M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z',
+      'M15 12a3 3 0 1 1-6 0a3 3 0 1 1 6 0'],
+  };
+  function icon(name) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+    for (const d of ICONS[name]) {
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', d); svg.append(path);
+    }
+    return svg;
+  }
+  const tab = (href, label, name, current) =>
+    el('a', { href, 'aria-current': current ? 'page' : null }, icon(name), el('span', {}, label));
 
   // Servers waiting for Trust first, then by name.
   const byTrustThenName = (a, b) => (b.server.trustPrompt - a.server.trustPrompt) || a.name.localeCompare(b.name);
