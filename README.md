@@ -81,3 +81,7 @@ The page can start processes on your Mac. It listens only on 127.0.0.1 and is re
 - public/: page, manifest, icons.
 - config.example.json: copy to config.local.json (not committed).
 - launchd/claude-launcher.plist.template: keeps the server running.
+
+## License
+
+MIT. See LICENSE.
