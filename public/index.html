@@ -21,18 +21,24 @@
     --accent: #c96442; --accent-ink: #ad4e2d; --accent-fill: #b4532f; --accent-on: #fff;
     --danger: #a8231b; --press: #f1ede8; --pill-bg: #fbe9e1; --pill-ink: #8a3a1f;
   }
+  /* Dark: follows the system unless Settings picks Light or Dark (data-theme on <html>). */
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
       --bg: #1b1a18; --card: #262422; --text: #eeeae4; --muted: #ada79f; --line: #34312c; --control: #4a463f;
       --accent: #d97757; --accent-ink: #e58a6b; --accent-fill: #d97757; --accent-on: #1b1a18;
       --danger: #f2827a; --press: #2f2c29; --pill-bg: #4a2f24; --pill-ink: #f3b49c;
     }
   }
+  :root[data-theme="dark"] {
+    --bg: #1b1a18; --card: #262422; --text: #eeeae4; --muted: #ada79f; --line: #34312c; --control: #4a463f;
+    --accent: #d97757; --accent-ink: #e58a6b; --accent-fill: #d97757; --accent-on: #1b1a18;
+    --danger: #f2827a; --press: #2f2c29; --pill-bg: #4a2f24; --pill-ink: #f3b49c;
+  }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
     font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    padding: env(safe-area-inset-top) 16px calc(32px + env(safe-area-inset-bottom));
+    padding: env(safe-area-inset-top) 16px calc(88px + env(safe-area-inset-bottom));
     -webkit-tap-highlight-color: transparent;
   }
   main { max-width: 640px; margin: 0 auto; }
@@ -90,7 +96,38 @@
   }
   .create input::placeholder { color: var(--muted); opacity: 1; }
   .create input:focus-visible { outline-offset: 0; }
-  .loading { color: var(--muted); padding: 18px 16px; }
+  .loading, .empty { color: var(--muted); padding: 18px 16px; }
+  .empty { font-size: 15px; }
+
+  /* Home: each group has a Running and a Recent list under its name. */
+  .group + .group { margin-top: 36px; }
+  .group > .head a { color: var(--accent-ink); text-decoration: none; font-size: 15px; font-weight: 500; }
+  h3 { font-size: 14px; font-weight: 500; color: var(--muted); margin: 14px 2px 8px; }
+
+  /* Settings: one row per setting, the control on the right. */
+  .setting { justify-content: space-between; }
+  .setting .name { font-weight: 500; }
+  .stepper { display: flex; align-items: center; gap: 4px; flex: none; }
+  .stepper button { width: 40px; padding: 0; font-size: 20px; }
+  .stepper output { min-width: 32px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .segments { display: flex; flex: none; border: 1px solid var(--control); border-radius: 8px; overflow: hidden; }
+  .segments button { border: 0; border-radius: 0; min-height: 36px; padding: 0 12px; font-size: 14px; }
+  .segments button + button { border-left: 1px solid var(--control); }
+  .segments [aria-pressed="true"] { background: var(--press); font-weight: 600; }
+
+  /* Bottom toolbar: Home, one tab per group, Settings. */
+  nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 2;
+    display: flex; justify-content: center; background: var(--card); border-top: 1px solid var(--line);
+    padding: 0 8px env(safe-area-inset-bottom);
+  }
+  nav a {
+    flex: 1; max-width: 160px; min-height: 52px; display: flex; align-items: center; justify-content: center;
+    padding: 0 4px; text-align: center; font-size: 14px; font-weight: 500; line-height: 1.2;
+    color: var(--muted); text-decoration: none;
+  }
+  nav a[aria-current="page"] { color: var(--accent-ink); font-weight: 600; }
+  nav a:active { background: var(--press); }
   /* Pull to refresh: iOS home-screen apps have no built-in one. */
   html, body { overscroll-behavior-y: none; }
   #ptr {
@@ -104,15 +141,32 @@
 <body>
 <div id="ptr" aria-hidden="true"></div>
 <main>
-  <header><h1>Claude Launcher</h1></header>
+  <header><h1 id="title">Claude Launcher</h1></header>
   <div id="status" role="status"></div>
-  <div id="groups"><div class="card loading">Loading projects…</div></div>
+  <div id="view"><div class="card loading">Loading projects…</div></div>
 </main>
+<nav id="tabs" aria-label="Pages"></nav>
 <script>
   const base = location.pathname;
-  const $groups = document.getElementById('groups');
+  const $view = document.getElementById('view');
+  const $title = document.getElementById('title');
+  const $tabs = document.getElementById('tabs');
   const $status = document.getElementById('status');
   let busy = false;
+  let state = null; // last /api/state, so switching pages renders at once
+
+  // Settings live in this browser only.
+  const DEFAULTS = { rows: 3, recentDays: 7, recentCount: 5, theme: 'system' };
+  const settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem('settings') || '{}') };
+  function saveSettings() {
+    localStorage.setItem('settings', JSON.stringify(settings));
+    applyTheme();
+  }
+  function applyTheme() {
+    if (settings.theme === 'system') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = settings.theme;
+  }
+  applyTheme();
 
   function setStatus(text, isError) {
     $status.textContent = text || '';
@@ -136,6 +190,16 @@
     return h < 24 ? `${h} hr ${m % 60} min` : `${Math.floor(h / 24)} d ${h % 24} hr`;
   }
 
+  function ago(ms) {
+    const m = Math.round((Date.now() - ms) / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return `${m} min ago`;
+    const h = Math.round(m / 60);
+    if (h < 24) return `${h} hr ago`;
+    const d = Math.round(h / 24);
+    return d === 1 ? 'yesterday' : `${d} days ago`;
+  }
+
   function el(tag, attrs = {}, ...kids) {
     const e = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) {
@@ -146,24 +210,80 @@
     return e;
   }
 
-  // Page order: New project, Running, then each group's idle projects.
-  function render({ groups }) {
-    const running = groups.flatMap((g) => g.projects.filter((p) => p.server))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    const sections = [section(head('New project'),
-      el('div', { class: 'card' }, ...fold('create', groups.map(createRow))))];
+  // Pages: #/ is Home, #/<group> a group's page, #/settings Settings.
+  const slug = (g) => g.short.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const route = () => decodeURIComponent(location.hash.replace(/^#\/?/, ''));
 
-    // A server waiting for Trust past the third row keeps Running open, so its button shows.
-    if (running.length) sections.push(section(head('Running', running.length),
-      el('div', { class: 'card' }, ...fold('running', running.map(project),
-        running.slice(3).some((p) => p.server.trustPrompt)))));
+  function render() {
+    if (!state) return;
+    const r = route();
+    const group = state.groups.find((g) => slug(g) === r);
+    const page = r === 'settings' ? 'settings' : group ? 'group' : 'home';
+    $tabs.replaceChildren(
+      tab('#/', 'Home', page === 'home'),
+      ...state.groups.map((g) => tab('#/' + slug(g), g.short, group === g)),
+      tab('#/settings', 'Settings', page === 'settings'));
+    if (page === 'settings') { $title.textContent = 'Settings'; $view.replaceChildren(...settingsPage()); }
+    else if (group) { $title.textContent = group.title; $view.replaceChildren(...groupPage(group)); }
+    else { $title.textContent = 'Claude Launcher'; $view.replaceChildren(...homePage()); }
+  }
 
-    for (const g of groups) {
-      const idle = g.projects.filter((p) => !p.server);
-      if (idle.length) sections.push(section(head(g.title, idle.length),
-        el('div', { class: 'card' }, ...fold(g.title, idle.map(project)))));
-    }
-    $groups.replaceChildren(...sections);
+  const tab = (href, label, current) => el('a', { href, 'aria-current': current ? 'page' : null }, label);
+
+  // Servers waiting for Trust first, then by name.
+  const byTrustThenName = (a, b) => (b.server.trustPrompt - a.server.trustPrompt) || a.name.localeCompare(b.name);
+
+  function homePage() {
+    const cutoff = Date.now() - settings.recentDays * 864e5;
+    return state.groups.map((g) => {
+      const running = g.projects.filter((p) => p.server).sort(byTrustThenName);
+      const recent = g.projects.filter((p) => !p.server && p.changed && p.changed >= cutoff)
+        .sort((a, b) => b.changed - a.changed).slice(0, settings.recentCount);
+      const kids = [el('div', { class: 'head' }, el('h2', {}, g.title),
+        el('a', { href: '#/' + slug(g) }, `All ${g.projects.length} ›`))];
+      if (running.length) kids.push(el('h3', {}, 'Running'),
+        el('div', { class: 'card' }, ...fold(g.title + ':running', running.map(project), trustHidden(running))));
+      if (recent.length) kids.push(el('h3', {}, 'Recent'),
+        el('div', { class: 'card' }, ...fold(g.title + ':recent', recent.map(project))));
+      if (!running.length && !recent.length) kids.push(el('div', { class: 'card empty' },
+        `Nothing running or changed in the last ${settings.recentDays === 1 ? 'day' : settings.recentDays + ' days'}.`));
+      return el('section', { class: 'group' }, ...kids);
+    });
+  }
+
+  function groupPage(g) {
+    const running = g.projects.filter((p) => p.server).sort(byTrustThenName);
+    const idle = g.projects.filter((p) => !p.server);
+    const out = [section(head('New project'), el('div', { class: 'card' }, createRow(g)))];
+    if (running.length) out.push(section(head('Running', running.length),
+      el('div', { class: 'card' }, ...fold(g.title + ':running', running.map(project), trustHidden(running)))));
+    out.push(section(head(running.length ? 'Not running' : 'Projects', idle.length),
+      idle.length ? el('div', { class: 'card' }, ...fold(g.title + ':all', idle.map(project)))
+        : el('div', { class: 'card empty' }, 'Every project here is running.')));
+    return out;
+  }
+
+  function settingsPage() {
+    const set = (k, v) => { settings[k] = v; saveSettings(); render(); };
+    const stepper = (k, min, max) => el('div', { class: 'stepper' },
+      el('button', { 'aria-label': 'Fewer', disabled: settings[k] <= min, onclick: () => set(k, settings[k] - 1) }, '−'),
+      el('output', {}, String(settings[k])),
+      el('button', { 'aria-label': 'More', disabled: settings[k] >= max, onclick: () => set(k, settings[k] + 1) }, '+'));
+    const row = (label, detail, control) => el('div', { class: 'row setting' },
+      el('div', { class: 'name' }, label, el('span', { class: 'meta' }, detail)), control);
+    return [
+      section(head('Lists'), el('div', { class: 'card' },
+        row('Rows before the arrow', 'Longer lists fold after this many', stepper('rows', 1, 20)))),
+      section(head('Recent'), el('div', { class: 'card' },
+        row('Days to look back', 'A project is recent if a file changed in this time', stepper('recentDays', 1, 60)),
+        row('Projects per group', 'On Home, under each group', stepper('recentCount', 1, 20)))),
+      section(head('Appearance'), el('div', { class: 'card' },
+        row('Theme', 'System follows your iPhone', el('div', { class: 'segments' },
+          ...['system', 'light', 'dark'].map((t) => el('button', { 'aria-pressed': String(settings.theme === t), onclick: () => set('theme', t) },
+            t[0].toUpperCase() + t.slice(1))))))),
+      section(el('div', { class: 'card' }, row('Reset settings', 'Back to the defaults',
+        el('button', { onclick: () => { Object.assign(settings, DEFAULTS); saveSettings(); render(); } }, 'Reset')))),
+    ];
   }
 
   const section = (...kids) => el('section', {}, ...kids);
@@ -173,23 +293,25 @@
       el('h2', {}, title, count == null ? '' : el('span', { class: 'count' }, String(count))));
   }
 
-  // Lists show three rows, then a down arrow with the number of rows hidden.
-  // The 15-second refresh rebuilds the page, so open lists are remembered by key.
+  // A server waiting for Trust past the fold keeps its list open, so its button shows.
+  const trustHidden = (running) => running.slice(settings.rows).some((p) => p.server.trustPrompt);
+
+  // Lists show settings.rows rows, then a down arrow with the number of rows hidden.
+  // Open lists are remembered by key across refreshes.
   const unfolded = {};
   function fold(key, rows, forceOpen = false) {
-    if (rows.length <= 3) return rows;
-    const toggle = () => { unfolded[key] = !unfolded[key]; refresh(); };
-    if (forceOpen) return rows;
+    const n = settings.rows;
+    if (rows.length <= n || forceOpen) return rows;
     const open = !!unfolded[key];
-    return [...(open ? rows : rows.slice(0, 3)),
-      el('button', { class: 'down', 'aria-expanded': String(open), onclick: toggle },
-        open ? '⌃  Show fewer' : `⌄  ${rows.length - 3} more`)];
+    return [...(open ? rows : rows.slice(0, n)),
+      el('button', { class: 'down', 'aria-expanded': String(open), onclick: () => { unfolded[key] = !open; render(); } },
+        open ? '⌃  Show fewer' : `⌄  ${rows.length - n} more`)];
   }
 
   function project(p) {
     const s = p.server;
     if (!s) return el('div', { class: 'row' },
-      el('div', { class: 'name' }, p.name),
+      el('div', { class: 'name' }, p.name, p.changed ? el('span', { class: 'meta' }, 'Changed ' + ago(p.changed)) : ''),
       el('button', { class: 'start', disabled: busy, onclick: () => start(p) }, 'Start'));
     const n = s.sessions;
     const detail = s.trustPrompt ? 'Waiting to trust this folder'
@@ -204,13 +326,13 @@
       el('button', { class: 'stop', disabled: busy, onclick: () => stop(p) }, 'Stop'));
   }
 
-  // The 15-second refresh rebuilds the page, so keep typed names across renders.
+  // Refreshes rebuild the page, so keep typed names across renders.
   const drafts = {};
 
   function createRow(g) {
     return el('div', { class: 'row create' },
       el('input', {
-        placeholder: g.title, 'aria-label': `New project in ${g.title}`,
+        placeholder: 'Folder name', 'aria-label': `New project in ${g.title}`,
         autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false',
         enterkeyhint: 'go', disabled: busy, value: drafts[g.title] || null,
         oninput: (e) => { drafts[g.title] = e.target.value; },
@@ -222,7 +344,7 @@
   async function create(g) {
     const name = (drafts[g.title] || '').trim();
     if (!name || busy) return;
-    busy = true; setStatus(`Creating ${name} and starting Remote Control...`); refresh();
+    busy = true; setStatus(`Creating ${name} and starting Remote Control...`); render();
     try {
       const r = await api('create', { group: g.title, name });
       delete drafts[g.title];
@@ -232,21 +354,20 @@
     busy = false; refresh();
   }
 
-
   async function refresh() {
     try {
-      const state = await api('state');
+      state = await api('state');
       // Rebuilding the page while typing would close the iPhone keyboard.
-      if (!document.activeElement?.closest('.create')) render(state);
+      if (!document.activeElement?.closest('.create')) render();
       if (!busy) setStatus('');
     } catch (e) {
-      setStatus(`Couldn't load projects (${e.message}).`, true); 
+      setStatus(`Couldn't load projects (${e.message}).`, true);
       $status.append(el('button', { class: 'link', onclick: refresh }, 'Retry'));
     }
   }
 
   async function start(p) {
-    busy = true; setStatus(`Starting Remote Control in ${p.name}...`); refresh();
+    busy = true; setStatus(`Starting Remote Control in ${p.name}...`); render();
     try {
       const r = await api('start', { path: p.path });
       setStatus(r.trustPrompt ? `${r.name} is waiting for you to trust its folder.`
@@ -257,7 +378,7 @@
 
   async function trust(p) {
     if (!confirm(`Trust ${p.path}? Sessions there can read, edit and run files, and the folder's project settings apply to them.`)) return;
-    busy = true; setStatus(`Trusting ${p.name}...`); refresh();
+    busy = true; setStatus(`Trusting ${p.name}...`); render();
     try { await api('trust', { id: p.server.id }); setStatus(`Trusted ${p.name}. Its session should appear in the Claude app shortly.`); }
     catch (e) { setStatus('Trust failed: ' + e.message, true); }
     busy = false; refresh();
@@ -266,7 +387,7 @@
   async function stop(p) {
     const n = p.server.sessions;
     if (!confirm(`Stop Remote Control in ${p.name}?` + (n ? ` Its ${n === 1 ? 'session' : n + ' sessions'} will end.` : ''))) return;
-    busy = true; setStatus(`Stopping ${p.name}...`); refresh();
+    busy = true; setStatus(`Stopping ${p.name}...`); render();
     try { await api('stop', { id: p.server.id }); setStatus(`Stopped ${p.name}.`); }
     catch (e) { setStatus('Stop failed: ' + e.message, true); }
     busy = false; refresh();
@@ -284,7 +405,7 @@
       $ptr.textContent = d >= THRESHOLD ? 'Release to reload' : 'Pull to reload';
     };
     addEventListener('touchstart', (e) => {
-      y0 = scrollY <= 0 && e.touches.length === 1 && !e.target.closest('input') ? e.touches[0].clientY : null;
+      y0 = scrollY <= 0 && e.touches.length === 1 && !e.target.closest('input, nav') ? e.touches[0].clientY : null;
       pull = 0; $main.classList.remove('settle');
     }, { passive: true });
     addEventListener('touchmove', (e) => {
@@ -304,8 +425,10 @@
     });
   })();
 
+  addEventListener('hashchange', () => { scrollTo(0, 0); render(); });
   refresh();
-  setInterval(refresh, 15000);
+  // Only Home refreshes on its own; other pages use pull to reload.
+  setInterval(() => { if (!route() && !document.hidden) refresh(); }, 15000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 </script>
 </body>
