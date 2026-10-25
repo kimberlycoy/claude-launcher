@@ -19,20 +19,20 @@
   :root {
     --bg: #f7f5f2; --card: #fff; --text: #1f1d1a; --muted: #6b655e; --line: #ebe6df; --control: #ddd6cd;
     --accent: #c96442; --accent-ink: #ad4e2d; --accent-fill: #b4532f; --accent-on: #fff;
-    --danger: #a8231b; --press: #f1ede8; --live: #faf6f1; --pill-bg: #fbe9e1; --pill-ink: #8a3a1f;
+    --danger: #a8231b; --press: #f1ede8; --pill-bg: #fbe9e1; --pill-ink: #8a3a1f;
   }
   /* Dark: follows the system unless Settings picks Light or Dark (data-theme on <html>). */
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #1b1a18; --card: #262422; --text: #eeeae4; --muted: #ada79f; --line: #34312c; --control: #4a463f;
       --accent: #d97757; --accent-ink: #e58a6b; --accent-fill: #d97757; --accent-on: #1b1a18;
-      --danger: #f2827a; --press: #2f2c29; --pill-bg: #4a2f24; --pill-ink: #f3b49c; --live: #2c2a27;
+      --danger: #f2827a; --press: #2f2c29; --pill-bg: #4a2f24; --pill-ink: #f3b49c;
     }
   }
   :root[data-theme="dark"] {
     --bg: #1b1a18; --card: #262422; --text: #eeeae4; --muted: #ada79f; --line: #34312c; --control: #4a463f;
     --accent: #d97757; --accent-ink: #e58a6b; --accent-fill: #d97757; --accent-on: #1b1a18;
-    --danger: #f2827a; --press: #2f2c29; --pill-bg: #4a2f24; --pill-ink: #f3b49c; --live: #2c2a27;
+    --danger: #f2827a; --press: #2f2c29; --pill-bg: #4a2f24; --pill-ink: #f3b49c;
   }
   * { box-sizing: border-box; }
   body {
@@ -58,8 +58,7 @@
      .split is the one full-width line, between running and not running. */
   .row { position: relative; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 12px 6px 16px; }
   .row + .row::before { content: ''; position: absolute; top: 0; left: 16px; right: 0; border-top: 1px solid var(--line); }
-  /* Running rows sit on a slightly warmer tone. On a group page they get their own card above the rest. */
-  .row.server { background: var(--live); }
+  /* On a group page running projects get their own card above the rest. */
   .card + .card { margin-top: 10px; }
   .row button, .row a.btn { min-height: 34px; padding: 0 12px; font-size: 14px; }
   .name { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: break-word; }
