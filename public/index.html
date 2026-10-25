@@ -58,6 +58,10 @@
     border-radius: 0; padding: 12px 14px; font-size: 16px;
   }
   .peek .chev { color: var(--accent); font-size: 20px; line-height: 1; }
+  .more {
+    width: 100%; background: transparent; color: var(--accent); border-radius: 0;
+    border-top: 1px solid var(--line); padding: 11px 14px; text-align: left;
+  }
   h2 button {
     font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit;
     background: none; border: 0; padding: 0; border-radius: 0;
@@ -130,7 +134,7 @@
       const idle = g.projects.filter((p) => !p.server);
       if (idle.length) sections.push(el('section', {},
         el('h2', {}, g.title),
-        el('div', { class: 'card' }, ...idle.map(project))));
+        el('div', { class: 'card' }, ...firstRows(g.title, idle.map(project)))));
     }
     $groups.replaceChildren(...sections);
   }
@@ -155,6 +159,16 @@
   const drafts = {};
   let createOpen = false; // New project starts closed on every load
   let runningOpen = false;
+
+  // Group lists show three projects until opened.
+  const groupOpen = {};
+  function firstRows(key, rows) {
+    if (rows.length <= 3) return rows;
+    const open = groupOpen[key];
+    return [...(open ? rows : rows.slice(0, 3)),
+      el('button', { class: 'more', 'aria-expanded': String(!!open), onclick: () => { groupOpen[key] = !open; refresh(); } },
+        open ? 'Show fewer' : `Show ${rows.length - 3} more`)];
+  }
 
   function toggle(label, open, flip) {
     return el('h2', {}, el('button', { 'aria-expanded': String(open), onclick: () => { flip(); refresh(); } }, label));
