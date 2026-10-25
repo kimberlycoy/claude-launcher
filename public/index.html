@@ -58,10 +58,9 @@
      .split is the one full-width line, between running and not running. */
   .row { position: relative; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 12px 6px 16px; }
   .row + .row::before { content: ''; position: absolute; top: 0; left: 16px; right: 0; border-top: 1px solid var(--line); }
-  /* Running rows sit on a slightly warmer tone; a gap and one full-width line follow them. */
+  /* Running rows sit on a slightly warmer tone. On a group page they get their own card above the rest. */
   .row.server { background: var(--live); }
-  .gap { height: 10px; border-top: 1px solid var(--control); }
-  .gap + .row::before { display: none; }
+  .card + .card { margin-top: 10px; }
   .row button, .row a.btn { min-height: 34px; padding: 0 12px; font-size: 14px; }
   .name { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: break-word; }
   .meta { display: block; color: var(--muted); font-size: 13px; font-weight: 400; margin-top: 2px; font-variant-numeric: tabular-nums; }
@@ -294,11 +293,12 @@
   function groupPage(g) {
     const running = g.projects.filter((p) => p.server).sort(byTrustThenName);
     const idle = g.projects.filter((p) => !p.server);
-    // One list: running first, a line, then the rest by name. No folding on this page.
-    const rows = [...running.map(project), running.length && idle.length ? el('div', { class: 'gap' }) : '', ...idle.map(project)];
+    // Running in one card, the rest by name in a second, under one heading. No folding on this page.
     return [
       section(el('div', { class: 'card' }, createRow(g))),
-      section(head('Projects', g.projects.length), el('div', { class: 'card' }, ...rows)),
+      section(head('Projects', g.projects.length),
+        running.length ? el('div', { class: 'card' }, ...running.map(project)) : '',
+        idle.length ? el('div', { class: 'card' }, ...idle.map(project)) : ''),
     ];
   }
 
