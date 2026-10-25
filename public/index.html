@@ -105,6 +105,7 @@
   .field-label { display: block; padding: 10px 16px 0; color: var(--muted); font-size: 13px; }
   .labelled .row { min-height: 0; padding-top: 4px; padding-bottom: 10px; }
   a.plain { color: inherit; text-decoration: none; }
+  .version { color: var(--muted); font-size: 13px; text-align: center; margin: 28px 0 0; }
   .loading, .empty { color: var(--muted); padding: 18px 16px; }
   .empty { font-size: 15px; }
 
@@ -441,6 +442,7 @@
             t[0].toUpperCase() + t.slice(1))))))),
       section(el('div', { class: 'card' }, row('Reset settings', 'Back to the defaults',
         el('button', { onclick: () => { Object.assign(settings, DEFAULTS); saveSettings(); render(); } }, 'Reset')))),
+      el('p', { class: 'version' }, `Claude Launcher ${state.version}`),
     ];
   }
 

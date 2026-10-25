@@ -50,6 +50,7 @@ const TMUX = '/opt/homebrew/bin/tmux';
 const CLAUDE = join(HOME, '.local/bin/claude');
 const PREFIX = 'rc-';
 const PUBLIC = join(import.meta.dirname, 'public');
+const VERSION = readFileSync(join(import.meta.dirname, 'VERSION'), 'utf8').trim(); // semver; see CHANGELOG.md
 
 // Clean environment for tmux and claude, so nothing leaks in from whatever started us.
 const ENV = {
@@ -338,7 +339,7 @@ async function state() {
       p.used = activity?.projects[p.path]?.lastUsed ?? null; // last Claude message in this project
     }
   const accounts = ACCOUNTS.map((a, i) => ({ id: a.id, title: a.title, configDir: a.configDir, ...infos[i] }));
-  return { accounts, groups };
+  return { version: VERSION, accounts, groups };
 }
 
 async function start(path) {

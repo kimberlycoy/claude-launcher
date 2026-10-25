@@ -78,6 +78,7 @@ The page can start processes on your Mac. It listens only on 127.0.0.1 and is re
 
 ## Files
 
+- VERSION and CHANGELOG.md: the current version and what changed in each release.
 - server.mjs: HTTP server, project listing, starting and stopping servers in tmux.
 - public/: page, manifest, icons.
 - config.example.json: copy to config.local.json (not committed).

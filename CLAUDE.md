@@ -8,3 +8,4 @@ A one-page web app that starts and stops a `claude remote-control` server per pr
 - Each server is a tmux session named rc-<group>-<project>, with @rc_path, @rc_name and @rc_mode=server session options. Stop sends Ctrl-C, then kills the tmux session. The launched claude gets a clean environment (`env -i`) so desktop app or Claude Code variables don't leak in.
 - Don't loosen the Tailscale login check or the project allow-list in start().
 - Local notes for this machine, if any, are in CLAUDE.local.md.
+- Versioning: semver in VERSION, with an entry in CHANGELOG.md for each release. To release, bump VERSION, add the changelog entry, commit, tag vX.Y.Z, push the tag, and create a GitHub release from the changelog entry.
