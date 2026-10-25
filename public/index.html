@@ -14,70 +14,89 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Claude">
 <style>
+  /* Kept from the original theme: warm off-white ground, white cards, terracotta accent.
+     --accent-ink is the accent one step darker so text and the one fill pass 4.5:1. */
   :root {
-    --bg: #f7f5f2; --card: #fff; --text: #1f1d1a; --muted: #77716a; --line: #e6e1da;
-    --accent: #c96442; --accent-text: #fff; --danger: #b3261e; --ok: #2e7d4f;
+    --bg: #f7f5f2; --card: #fff; --text: #1f1d1a; --muted: #6b655e; --line: #ebe6df; --control: #ddd6cd;
+    --accent: #c96442; --accent-ink: #ad4e2d; --accent-fill: #b4532f; --accent-on: #fff;
+    --danger: #a8231b; --press: #f1ede8;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #1b1a18; --card: #262422; --text: #eeeae4; --muted: #a39d95; --line: #38352f;
-      --accent: #d97757; --accent-text: #1b1a18; --danger: #f2827a; --ok: #5cc28a;
+      --bg: #1b1a18; --card: #262422; --text: #eeeae4; --muted: #ada79f; --line: #34312c; --control: #4a463f;
+      --accent: #d97757; --accent-ink: #e58a6b; --accent-fill: #d97757; --accent-on: #1b1a18;
+      --danger: #f2827a; --press: #2f2c29;
     }
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
-    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    padding: env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom));
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: env(safe-area-inset-top) 16px calc(32px + env(safe-area-inset-bottom));
+    -webkit-tap-highlight-color: transparent;
   }
   main { max-width: 640px; margin: 0 auto; }
-  h1 { font-size: 22px; margin: 20px 0 4px; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 24px 0 8px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-  .project { border-top: 1px solid var(--line); }
-  .project:first-child { border-top: 0; }
-  .row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
-  .name { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
-  button:disabled { opacity: .5; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 24px 0 4px; }
+  h1 { font-size: 24px; line-height: 1.2; letter-spacing: -0.01em; margin: 0; }
+  .fresh { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #status { color: var(--muted); font-size: 14px; min-height: 20px; margin-bottom: 4px; }
+  #status.error { color: var(--danger); }
+  #status button { margin-left: 8px; }
+
+  section { margin-top: 28px; }
+  .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 2px 10px; }
+  h2 { font-size: 17px; font-weight: 600; margin: 0; }
+  h2 .count { color: var(--muted); font-weight: 400; margin-left: 6px; font-variant-numeric: tabular-nums; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 10px; min-height: 60px; padding: 10px 12px 10px 16px; }
+  .row + .row, .row + .more { border-top: 1px solid var(--line); }
+  .name { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: break-word; }
+  .meta { display: block; color: var(--muted); font-size: 13px; font-weight: 400; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .server .label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .server { gap: 8px; }
+  .server button, .server a.btn { padding: 0 14px; }
+  .wait .meta { color: var(--accent-ink); }
+
+  /* One control shape: a 40px pill. Outlined by default; the rare Trust is the only fill. */
   button, a.btn {
-    font: inherit; font-size: 14px; border: 0; border-radius: 8px; padding: 7px 12px;
+    font: inherit; font-size: 15px; font-weight: 500; line-height: 1; min-height: 40px; padding: 0 16px;
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+    border: 1px solid var(--control); border-radius: 999px; background: transparent; color: var(--text);
     cursor: pointer; text-decoration: none; white-space: nowrap;
+    transition: background-color .12s, transform .08s;
   }
-  .new { background: var(--accent); color: var(--accent-text); font-weight: 600; }
-  .age { color: var(--muted); font-size: 12px; font-weight: 400; display: block; }
-  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-right: 8px; vertical-align: 1px; }
-  .running { border-color: var(--ok); }
-  a.btn { background: transparent; color: var(--accent); border: 1px solid var(--line); }
-  .stop { background: transparent; color: var(--danger); border: 1px solid var(--line); }
+  button:active:not(:disabled), a.btn:active { transform: scale(.97); background: var(--press); }
+  @media (hover: hover) { button:hover:not(:disabled), a.btn:hover { background: var(--press); } }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .start { color: var(--accent-ink); }
+  .stop { color: var(--danger); }
+  .fill { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--accent-on); font-weight: 600; }
+  .fill:active:not(:disabled) { background: var(--accent-fill); filter: brightness(.92); }
+  .link { border: 0; min-height: 32px; padding: 0 4px; color: var(--accent-ink); font-size: 15px; }
+
+  /* Collapsed sections: a tappable card that says what's inside. */
+  .peek { width: 100%; border: 0; border-radius: 0; min-height: 64px; padding: 12px 16px; justify-content: flex-start; gap: 12px; text-align: left; font-weight: 400; }
+  .peek .name { white-space: normal; }
+  .chev { color: var(--accent-ink); font-size: 22px; line-height: 1; }
+  .more { width: 100%; border: 0; border-radius: 0; min-height: 48px; padding: 0 16px; justify-content: flex-start; color: var(--accent-ink); }
+
   .create input {
-    flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 6px 10px;
-    border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text);
+    flex: 1; min-width: 0; height: 40px; font: inherit; font-size: 16px; padding: 0 14px;
+    border: 1px solid var(--control); border-radius: 999px; background: var(--bg); color: var(--text);
   }
-  .peek {
-    width: 100%; text-align: left; background: transparent; color: var(--text);
-    border-radius: 0; padding: 12px 14px; font-size: 16px;
-  }
-  .peek .chev { color: var(--accent); font-size: 20px; line-height: 1; }
-  .more {
-    width: 100%; background: transparent; color: var(--accent); border-radius: 0;
-    border-top: 1px solid var(--line); padding: 11px 14px; text-align: left;
-  }
-  h2 button {
-    font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit;
-    background: none; border: 0; padding: 0; border-radius: 0;
-  }
-  h2 button::before { content: '\25B8'; display: inline-block; width: 1.2em; transition: transform .15s; }
-  h2 button[aria-expanded="true"]::before { transform: rotate(90deg); }
-  .create button { background: transparent; color: var(--accent); border: 1px solid var(--line); }
-  #status { color: var(--muted); font-size: 14px; min-height: 20px; }
-  .error { color: var(--danger) !important; }
+  .create input::placeholder { color: var(--muted); opacity: 1; }
+  .create input:focus-visible { outline-offset: 0; }
+  .loading { color: var(--muted); padding: 18px 16px; }
+  @media (prefers-reduced-motion: reduce) { button, a.btn { transition: none; } button:active, a.btn:active { transform: none; } }
 </style>
 </head>
 <body>
 <main>
-  <h1>Claude Launcher</h1>
-  <div id="status"></div>
-  <div id="groups"></div>
+  <header><h1>Claude Launcher</h1><span class="fresh" id="fresh"></span></header>
+  <div id="status" role="status"></div>
+  <div id="groups"><div class="card loading">Loading projects…</div></div>
 </main>
 <script>
   const base = location.pathname;
@@ -101,6 +120,7 @@
 
   function age(ms) {
     const m = Math.round((Date.now() - ms) / 60000);
+    if (m < 1) return 'just started';
     if (m < 60) return `${m} min`;
     const h = Math.floor(m / 60);
     return h < 24 ? `${h} hr ${m % 60} min` : `${Math.floor(h / 24)} d ${h % 24} hr`;
@@ -116,46 +136,66 @@
     return e;
   }
 
-  // Running projects go in their own section at the top; the groups below list the rest.
+  // Page order: New project, Running, then each group's idle projects.
   function render({ groups }) {
-    const running = groups.flatMap((g) => g.projects.filter((p) => p.server).map((p) => ({ ...p, group: g.title })))
+    const running = groups.flatMap((g) => g.projects.filter((p) => p.server))
       .sort((a, b) => a.name.localeCompare(b.name));
-    const sections = [el('section', {},
-      toggle('New project', createOpen, () => { createOpen = !createOpen; }),
-      el('div', { class: 'card' }, ...(createOpen ? groups.map(createRow) : [createPeek(groups)])))];
-    // More than three running servers collapse, unless one is waiting for Trust.
-    const collapsible = running.length > 3 && !running.some((p) => p.server.trustPrompt);
-    const showRunning = !collapsible || runningOpen;
-    if (running.length) sections.push(el('section', {},
-      collapsible ? toggle(`Running · ${running.length}`, runningOpen, () => { runningOpen = !runningOpen; })
-        : el('h2', {}, `Running · ${running.length}`),
-      showRunning ? el('div', { class: 'card running' }, ...running.map(project)) : ''));
+    const sections = [section(
+      head('New project', null, createOpen ? ['Done', () => { createOpen = false; }] : null),
+      el('div', { class: 'card' }, ...(createOpen ? groups.map(createRow)
+        : [peek('Make a folder and start Claude in it', groups.map((g) => g.title).join(' · '), () => { createOpen = true; })])))];
+
+    if (running.length) {
+      // More than three running servers collapse, unless one is waiting for Trust.
+      const collapsible = running.length > 3 && !running.some((p) => p.server.trustPrompt);
+      const open = !collapsible || runningOpen;
+      const names = running.slice(0, 3).map((p) => p.name).join(', ') + ` and ${running.length - 3} more`;
+      sections.push(section(
+        head('Running', running.length, collapsible && open ? ['Hide', () => { runningOpen = false; }] : null),
+        el('div', { class: 'card' }, ...(open ? running.map(project)
+          : [peek(`${running.length} servers running`, names, () => { runningOpen = true; })]))));
+    }
+
     for (const g of groups) {
       const idle = g.projects.filter((p) => !p.server);
-      if (idle.length) sections.push(el('section', {},
-        el('h2', {}, g.title),
+      if (idle.length) sections.push(section(
+        head(g.title, idle.length),
         el('div', { class: 'card' }, ...firstRows(g.title, idle.map(project)))));
     }
     $groups.replaceChildren(...sections);
   }
 
+  const section = (...kids) => el('section', {}, ...kids);
+
+  // A section heading with an optional count and one text action on the right.
+  function head(title, count, action) {
+    return el('div', { class: 'head' },
+      el('h2', {}, title, count == null ? '' : el('span', { class: 'count' }, String(count))),
+      action ? el('button', { class: 'link', onclick: () => { action[1](); refresh(); } }, action[0]) : '');
+  }
+
+  function peek(title, detail, open) {
+    return el('button', { class: 'peek', 'aria-expanded': 'false', onclick: () => { open(); refresh(); } },
+      el('span', { class: 'name' }, title, el('span', { class: 'meta' }, detail)),
+      el('span', { class: 'chev', 'aria-hidden': 'true' }, '›'));
+  }
+
   function project(p) {
     const s = p.server;
-    if (!s) return el('div', { class: 'project row' },
+    if (!s) return el('div', { class: 'row' },
       el('div', { class: 'name' }, p.name),
-      el('button', { class: 'new', disabled: busy, onclick: () => start(p) }, 'Start'));
+      el('button', { class: 'start', disabled: busy, onclick: () => start(p) }, 'Start'));
     const n = s.sessions;
-    const detail = [p.group, 'running ' + age(s.started),
-      n == null ? '' : n === 1 ? '1 session' : `${n} sessions`].filter(Boolean).join(' · ');
-    return el('div', { class: 'project row' },
-      el('div', { class: 'name' }, el('span', { class: 'dot' }), p.name,
-        el('span', { class: 'age' }, s.trustPrompt ? 'Waiting for you to trust this folder' : detail)),
-      s.trustPrompt ? el('button', { class: 'new', disabled: busy, onclick: () => trust(p) }, 'Trust') : '',
+    const detail = s.trustPrompt ? 'Waiting for Trust'
+      : [n == null ? '' : n === 1 ? '1 session' : `${n} sessions`, age(s.started)].filter(Boolean).join(' · ');
+    return el('div', { class: 'row server' + (s.trustPrompt ? ' wait' : '') },
+      el('div', { class: 'name' }, el('span', { class: 'label' }, p.name), el('span', { class: 'meta' }, detail)),
+      s.trustPrompt ? el('button', { class: 'fill', disabled: busy, onclick: () => trust(p) }, 'Trust') : '',
       s.url ? el('a', { class: 'btn', href: s.url, target: '_blank' }, 'Open') : '',
       el('button', { class: 'stop', disabled: busy, onclick: () => stop(p) }, 'Stop'));
   }
 
-  // The 15-second refresh rebuilds the page, so keep typed names across renders.
+  // The 15-second refresh rebuilds the page, so keep typed names and open sections across renders.
   const drafts = {};
   let createOpen = false; // New project starts closed on every load
   let runningOpen = false;
@@ -170,20 +210,8 @@
         open ? 'Show fewer' : `Show ${rows.length - 3} more`)];
   }
 
-  function toggle(label, open, flip) {
-    return el('h2', {}, el('button', { 'aria-expanded': String(open), onclick: () => { flip(); refresh(); } }, label));
-  }
-
-  // Closed state: a tappable card that says what's inside.
-  function createPeek(groups) {
-    return el('button', { class: 'peek row', onclick: () => { createOpen = true; refresh(); } },
-      el('div', { class: 'name' }, 'Make a folder and start Claude in it',
-        el('span', { class: 'age' }, groups.map((g) => g.title).join(' · '))),
-      el('span', { class: 'chev', 'aria-hidden': 'true' }, '\u203A'));
-  }
-
   function createRow(g) {
-    return el('div', { class: 'project row create' },
+    return el('div', { class: 'row create' },
       el('input', {
         placeholder: g.title, 'aria-label': `New project in ${g.title}`,
         autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false',
@@ -191,7 +219,7 @@
         oninput: (e) => { drafts[g.title] = e.target.value; },
         onkeydown: (e) => { if (e.key === 'Enter') create(g); },
       }),
-      el('button', { disabled: busy, onclick: () => create(g) }, 'Create'));
+      el('button', { class: 'start', disabled: busy, onclick: () => create(g) }, 'Create'));
   }
 
   async function create(g) {
@@ -207,14 +235,20 @@
     busy = false; refresh();
   }
 
+  const $fresh = document.getElementById('fresh');
+  const clock = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
   async function refresh() {
     try {
       const state = await api('state');
+      $fresh.textContent = 'Updated ' + clock(new Date());
       // Rebuilding the page while typing would close the iPhone keyboard.
       if (!document.activeElement?.closest('.create')) render(state);
       if (!busy) setStatus('');
+    } catch (e) {
+      setStatus(`Couldn't load projects (${e.message}).`, true); // the header keeps the last good time
+      $status.append(el('button', { class: 'link', onclick: refresh }, 'Retry'));
     }
-    catch (e) { setStatus('Could not load: ' + e.message, true); }
   }
 
   async function start(p) {
