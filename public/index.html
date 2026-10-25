@@ -87,6 +87,10 @@
   .peek { width: 100%; border: 0; border-radius: 0; min-height: 64px; padding: 12px 16px; justify-content: flex-start; gap: 12px; text-align: left; font-weight: 400; }
   .peek .name { white-space: normal; }
   .chev { color: var(--accent-ink); font-size: 22px; line-height: 1; }
+  /* Closed New project: the top of its rows shows, cut off, above a down arrow. */
+  .clip { max-height: 34px; overflow: hidden; cursor: pointer; }
+  .clip .row { pointer-events: none; }
+  .down { width: 100%; border: 0; border-top: 1px solid var(--line); border-radius: 0; min-height: 36px; color: var(--accent-ink); font-size: 18px; }
   .more { width: 100%; border: 0; border-radius: 0; min-height: 48px; padding: 0 16px; justify-content: flex-start; color: var(--accent-ink); }
 
   .create input {
@@ -157,8 +161,7 @@
       .sort((a, b) => a.name.localeCompare(b.name));
     const sections = [section(
       head('New project', null, createOpen ? ['Done', () => { createOpen = false; }] : null),
-      el('div', { class: 'card' }, ...(createOpen ? groups.map(createRow)
-        : [peek('Make a folder and start Claude in it', groups.map((g) => g.title).join(' · '), () => { createOpen = true; })])))];
+      el('div', { class: 'card' }, ...(createOpen ? groups.map(createRow) : createPeek(groups))))];
 
     if (running.length) {
       // More than three running servers collapse, unless one is waiting for Trust.
@@ -226,6 +229,14 @@
     return [...(open ? rows : rows.slice(0, 3)),
       el('button', { class: 'more', 'aria-expanded': String(!!open), onclick: () => { groupOpen[key] = !open; refresh(); } },
         open ? 'Show fewer' : `Show ${rows.length - 3} more`)];
+  }
+
+  function createPeek(groups) {
+    const open = () => { createOpen = true; refresh(); };
+    return [
+      el('div', { class: 'clip', inert: '', onclick: open }, ...groups.map(createRow)),
+      el('button', { class: 'down', 'aria-label': 'Show New project', 'aria-expanded': 'false', onclick: open }, '\u2304'),
+    ];
   }
 
   function createRow(g) {
