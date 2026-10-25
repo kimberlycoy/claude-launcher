@@ -1,0 +1,9 @@
+{
+  "name": "Claude Launcher",
+  "short_name": "Claude",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f7f5f2",
+  "theme_color": "#c96442",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

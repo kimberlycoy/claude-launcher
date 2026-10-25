@@ -1,0 +1,5 @@
+server.log
+.DS_Store
+.claude/worktrees/
+config.local.json
+CLAUDE.local.md

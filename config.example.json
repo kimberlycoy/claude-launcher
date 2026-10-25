@@ -1,0 +1,7 @@
+{
+  "allowedLogin": "you@example.com",
+  "groups": [
+    { "title": "Personal projects", "dir": "~/dev/personal" },
+    { "title": "Work projects", "dir": "~/dev/work", "skip": ["archive"] }
+  ]
+}

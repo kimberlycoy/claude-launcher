@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script>
+  // Relative links (manifest, api/) need a trailing slash when served behind /rc.
+  if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' + location.search);
+</script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Claude Launcher</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Claude">
+<style>
+  :root {
+    --bg: #f7f5f2; --card: #fff; --text: #1f1d1a; --muted: #77716a; --line: #e6e1da;
+    --accent: #c96442; --accent-text: #fff; --danger: #b3261e; --ok: #2e7d4f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1b1a18; --card: #262422; --text: #eeeae4; --muted: #a39d95; --line: #38352f;
+      --accent: #d97757; --accent-text: #1b1a18; --danger: #f2827a; --ok: #5cc28a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom));
+  }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 20px 0 4px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 24px 0 8px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .project { border-top: 1px solid var(--line); }
+  .project:first-child { border-top: 0; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+  .name { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+  button:disabled { opacity: .5; }
+  button, a.btn {
+    font: inherit; font-size: 14px; border: 0; border-radius: 8px; padding: 7px 12px;
+    cursor: pointer; text-decoration: none; white-space: nowrap;
+  }
+  .new { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+  .age { color: var(--muted); font-size: 12px; font-weight: 400; display: block; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-right: 8px; vertical-align: 1px; }
+  .running { border-color: var(--ok); }
+  a.btn { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  .stop { background: transparent; color: var(--danger); border: 1px solid var(--line); }
+  #status { color: var(--muted); font-size: 14px; min-height: 20px; }
+  .error { color: var(--danger) !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Claude Launcher</h1>
+  <div id="status"></div>
+  <div id="groups"></div>
+</main>
+<script>
+  const base = location.pathname;
+  const $groups = document.getElementById('groups');
+  const $status = document.getElementById('status');
+  let busy = false;
+
+  function setStatus(text, isError) {
+    $status.textContent = text || '';
+    $status.className = isError ? 'error' : '';
+  }
+
+  async function api(path, body) {
+    const res = await fetch(base + 'api/' + path, body ? {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    } : {});
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    return data;
+  }
+
+  function age(ms) {
+    const m = Math.round((Date.now() - ms) / 60000);
+    if (m < 60) return `${m} min`;
+    const h = Math.floor(m / 60);
+    return h < 24 ? `${h} hr ${m % 60} min` : `${Math.floor(h / 24)} d ${h % 24} hr`;
+  }
+
+  function el(tag, attrs = {}, ...kids) {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+      else if (v != null && v !== false) e.setAttribute(k, v);
+    }
+    e.append(...kids);
+    return e;
+  }
+
+  // Running projects go in their own section at the top; the groups below list the rest.
+  function render({ groups }) {
+    const running = groups.flatMap((g) => g.projects.filter((p) => p.server).map((p) => ({ ...p, group: g.title })))
+      .sort((a, b) => a.server.started - b.server.started);
+    const sections = [];
+    if (running.length) sections.push(el('section', {},
+      el('h2', {}, `Running · ${running.length}`),
+      el('div', { class: 'card running' }, ...running.map(project))));
+    for (const g of groups) {
+      const idle = g.projects.filter((p) => !p.server);
+      if (idle.length) sections.push(el('section', {},
+        el('h2', {}, g.title),
+        el('div', { class: 'card' }, ...idle.map(project))));
+    }
+    $groups.replaceChildren(...sections);
+  }
+
+  function project(p) {
+    const s = p.server;
+    if (!s) return el('div', { class: 'project row' },
+      el('div', { class: 'name' }, p.name),
+      el('button', { class: 'new', disabled: busy, onclick: () => start(p) }, 'Start'));
+    const n = s.sessions;
+    const detail = [p.group, 'running ' + age(s.started),
+      n == null ? '' : n === 1 ? '1 session' : `${n} sessions`].filter(Boolean).join(' · ');
+    return el('div', { class: 'project row' },
+      el('div', { class: 'name' }, el('span', { class: 'dot' }), p.name, el('span', { class: 'age' }, detail)),
+      s.url ? el('a', { class: 'btn', href: s.url, target: '_blank' }, 'Open') : '',
+      el('button', { class: 'stop', disabled: busy, onclick: () => stop(p) }, 'Stop'));
+  }
+
+  async function refresh() {
+    try { render(await api('state')); if (!busy) setStatus(''); }
+    catch (e) { setStatus('Could not load: ' + e.message, true); }
+  }
+
+  async function start(p) {
+    busy = true; setStatus(`Starting Remote Control in ${p.name}...`); refresh();
+    try {
+      const r = await api('start', { path: p.path });
+      setStatus(`Started ${r.name}. Its session should appear in the Claude app shortly.`);
+    } catch (e) { setStatus('Start failed: ' + e.message, true); }
+    busy = false; refresh();
+  }
+
+  async function stop(p) {
+    const n = p.server.sessions;
+    if (!confirm(`Stop Remote Control in ${p.name}?` + (n ? ` Its ${n === 1 ? 'session' : n + ' sessions'} will end.` : ''))) return;
+    busy = true; setStatus(`Stopping ${p.name}...`); refresh();
+    try { await api('stop', { id: p.server.id }); setStatus(`Stopped ${p.name}.`); }
+    catch (e) { setStatus('Stop failed: ' + e.message, true); }
+    busy = false; refresh();
+  }
+
+  refresh();
+  setInterval(refresh, 15000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+</script>
+</body>
+</html>
