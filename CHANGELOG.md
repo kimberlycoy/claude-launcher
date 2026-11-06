@@ -2,6 +2,10 @@
 
 Versions follow semantic versioning (https://semver.org). The current version is in VERSION and shows at the bottom of Settings.
 
+## Unreleased
+
+- Servers start with your login shell's environment (full PATH, tool settings) instead of a minimal one, so sessions started from the phone can use the same tools as ones started on the Mac.
+
 ## 1.0.1 - 2026-10-25
 
 - README screenshots for the current layout: a group page and the Activity page, with sample data.

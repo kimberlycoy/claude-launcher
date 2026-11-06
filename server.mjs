@@ -52,10 +52,14 @@ const PREFIX = 'rc-';
 const PUBLIC = join(import.meta.dirname, 'public');
 const VERSION = readFileSync(join(import.meta.dirname, 'VERSION'), 'utf8').trim(); // semver; see CHANGELOG.md
 
-// Clean environment for tmux and claude, so nothing leaks in from whatever started us.
+// Minimal environment for tmux and the login shell below, so nothing leaks in from
+// whatever started us.
+const SHELL = process.env.SHELL || '/bin/zsh';
 const ENV = {
   HOME,
   USER: process.env.USER || basename(HOME),
+  LOGNAME: process.env.USER || basename(HOME),
+  SHELL,
   PATH: `${join(HOME, '.local/bin')}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`,
   LANG: 'en_US.UTF-8',
   TERM: 'xterm-256color',
@@ -91,9 +95,30 @@ function loadConfig(file) {
 
 const tmux = (...args) => run(TMUX, args, { env: ENV });
 
-const accountEnv = (account) => {
+// Servers get the environment a new Terminal window would have (your login shell's PATH,
+// tool settings and so on), so sessions match ones started on the Mac. Read fresh on each
+// start so shell profile changes apply. Claude/Anthropic variables and shell bookkeeping
+// are dropped; if the shell fails, fall back to the minimal ENV.
+const DROP = /^(CLAUDE|ANTHROPIC|TMUX|TERM_|PWD$|OLDPWD$|SHLVL$|_$)/;
+async function shellEnv() {
+  try {
+    const { stdout } = await run(SHELL, ['-l', '-i', '-c', '/usr/bin/env -0'],
+      { env: ENV, cwd: HOME, timeout: 10000, maxBuffer: 1 << 20 });
+    const env = {};
+    for (const line of stdout.split('\0')) {
+      const i = line.indexOf('=');
+      if (i > 0 && !DROP.test(line.slice(0, i))) env[line.slice(0, i)] = line.slice(i + 1);
+    }
+    if (env.PATH) return { ...env, TERM: ENV.TERM };
+  } catch (e) {
+    console.error('shell env:', e.message);
+  }
+  return ENV;
+}
+
+const accountEnv = (account, base = ENV) => {
   const { configDir } = ACCOUNTS.find((a) => a.id === account);
-  return configDir ? { ...ENV, CLAUDE_CONFIG_DIR: configDir } : ENV;
+  return configDir ? { ...base, CLAUDE_CONFIG_DIR: configDir } : base;
 };
 
 // Who each account is signed in as, so the page can show it. `claude auth status` is a
@@ -362,7 +387,7 @@ async function start(path) {
   // The server opens one session in this folder named after the project, so it shows
   // up in the app right away; more sessions opened from the phone also run here.
   await tmux('new-session', '-d', '-s', id, '-x', '200', '-y', '50', '-c', path,
-    '/usr/bin/env', '-i', ...Object.entries(accountEnv(group.account)).map(([k, v]) => `${k}=${v}`),
+    '/usr/bin/env', '-i', ...Object.entries(accountEnv(group.account, await shellEnv())).map(([k, v]) => `${k}=${v}`),
     CLAUDE, 'remote-control', '--spawn', 'same-dir', '--name', project.name,
     '--remote-control-session-name-prefix', project.name);
   await tmux('set-option', '-t', id, '@rc_path', path);
