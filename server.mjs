@@ -186,7 +186,7 @@ async function readPane(id) {
   let trustPrompt = false;
   try {
     const { stdout } = await tmux('capture-pane', '-p', '-J', '-S', '-200', '-t', id);
-    info.url ||= stdout.match(/https:\/\/claude\.ai\/code\?environment=[A-Za-z0-9_]+/)?.[0];
+    info.url ||= stdout.match(/https:\/\/claude\.ai\/code(\?environment=|\/session_)[A-Za-z0-9_]+/)?.[0]; // a reconnect prints a session link
     const counts = [...stdout.matchAll(/Capacity: (\d+)\//g)];
     if (counts.length) sessions = Number(counts.at(-1)[1]);
     trustPrompt = /Trust .*\? \[y\/N\]\s*$/.test(stdout.trimEnd());
@@ -362,12 +362,23 @@ async function state() {
       p.server = servers.find((s) => s.path === p.path) || null;
       p.changed = changed.get(p.path)?.ms ?? null;
       p.used = activity?.projects[p.path]?.lastUsed ?? null; // last Claude message in this project
+      p.resumable = !p.server && (await lastSession(g.account, p.path));
     }
   const accounts = ACCOUNTS.map((a, i) => ({ id: a.id, title: a.title, configDir: a.configDir, ...infos[i] }));
   return { version: VERSION, accounts, groups };
 }
 
-async function start(path) {
+// `claude remote-control` records its last session per folder in bridge-pointer.json, and
+// `--continue` reattaches it if it was recorded within about 4 hours.
+const RESUME_MS = 4 * 60 * 60 * 1000;
+async function lastSession(accountId, path) {
+  const { configDir } = ACCOUNTS.find((a) => a.id === accountId);
+  const file = join(configDir || join(HOME, '.claude'), 'projects', path.replace(/[^A-Za-z0-9]/g, '-'), 'bridge-pointer.json');
+  const s = await stat(file).catch(() => null);
+  return !!s && Date.now() - s.mtimeMs < RESUME_MS;
+}
+
+async function start(path, resume = false) {
   const groups = await listProjects();
   const group = groups.find((g) => g.projects.some((p) => p.path === path));
   if (!group) throw httpError(400, 'Unknown project');
@@ -388,8 +399,9 @@ async function start(path) {
   // up in the app right away; more sessions opened from the phone also run here.
   await tmux('new-session', '-d', '-s', id, '-x', '200', '-y', '50', '-c', path,
     '/usr/bin/env', '-i', ...Object.entries(accountEnv(group.account, await shellEnv())).map(([k, v]) => `${k}=${v}`),
-    CLAUDE, 'remote-control', '--spawn', 'same-dir', '--name', project.name,
-    '--remote-control-session-name-prefix', project.name);
+    CLAUDE, 'remote-control', '--name', project.name, '--remote-control-session-name-prefix', project.name,
+    // --continue can't be combined with spawn flags; the reattached server keeps its old mode.
+    ...(resume ? ['--continue'] : ['--spawn', 'same-dir']));
   await tmux('set-option', '-t', id, '@rc_path', path);
   await tmux('set-option', '-t', id, '@rc_name', project.name);
   await tmux('set-option', '-t', id, '@rc_mode', 'server');
@@ -397,6 +409,10 @@ async function start(path) {
 
   // Wait briefly for the server to print its environment link.
   for (let i = 0; i < 20; i++) {
+    if (resume && !(await tmux('has-session', '-t', `=${id}`).then(() => true, () => false))) {
+      serverInfo.delete(id);
+      throw httpError(409, `No recent session to reconnect in ${project.name}; use Start`);
+    }
     const { url, trustPrompt } = await readPane(id);
     if (url || trustPrompt) return { id, name: project.name, url, trustPrompt };
     await new Promise((r) => setTimeout(r, 500));
@@ -475,8 +491,10 @@ createServer(async (req, res) => {
     }
     if (req.method === 'GET' && pathname === '/api/state') return send(200, await state());
     if (req.method === 'GET' && pathname === '/api/activity') return send(200, await getActivity());
-    if (req.method === 'POST' && pathname === '/api/start')
-      return send(200, await start((await readJson(req)).path));
+    if (req.method === 'POST' && pathname === '/api/start') {
+      const { path, resume } = await readJson(req);
+      return send(200, await start(path, resume === true));
+    }
     if (req.method === 'POST' && pathname === '/api/create') {
       const { group, name } = await readJson(req);
       return send(200, await create(group, name));

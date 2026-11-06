@@ -473,6 +473,7 @@
     if (!s) return el('div', { class: 'row' },
       el('div', { class: 'name' }, p.name, p.used ? el('span', { class: 'meta' }, 'Used ' + ago(p.used))
         : p.changed ? el('span', { class: 'meta' }, 'Changed ' + ago(p.changed)) : ''),
+      p.resumable ? el('button', { class: 'start', disabled: busy, onclick: () => start(p, true) }, 'Reconnect') : '',
       el('button', { class: 'start', disabled: busy, onclick: () => start(p) }, 'Start'));
     const n = s.sessions;
     const detail = s.trustPrompt ? 'Waiting to trust this folder'
@@ -547,13 +548,14 @@
     }
   }
 
-  async function start(p) {
-    busy = true; setStatus(`Starting Remote Control in ${p.name}...`); render();
+  async function start(p, resume = false) {
+    busy = true; setStatus(`${resume ? 'Reconnecting' : 'Starting Remote Control in'} ${p.name}...`); render();
     try {
-      const r = await api('start', { path: p.path });
+      const r = await api('start', { path: p.path, resume });
       setStatus(r.trustPrompt ? `${r.name} is waiting for you to trust its folder.`
+        : resume ? `Reconnected ${r.name}. Its last session should come back in the Claude app shortly.`
         : `Started ${r.name}. Its session should appear in the Claude app shortly.`);
-    } catch (e) { setStatus('Start failed: ' + e.message, true); }
+    } catch (e) { setStatus((resume ? 'Reconnect' : 'Start') + ' failed: ' + e.message, true); }
     busy = false; refresh();
   }
 
